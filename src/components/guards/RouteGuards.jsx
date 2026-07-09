@@ -7,14 +7,24 @@ import {
   canAccessPage,
 } from '../../lib/permissions'
 
+function AuthLoading() {
+  return (
+    <div className="min-h-[100dvh] flex items-center justify-center text-slate-500">
+      Yükleniyor...
+    </div>
+  )
+}
+
 export function RequireAuth({ children }) {
-  const { currentUser } = useAuth()
+  const { currentUser, loading } = useAuth()
+  if (loading) return <AuthLoading />
   if (!currentUser) return <Navigate to="/giris" replace />
   return children
 }
 
 export function RequireSetup({ children }) {
-  const { isInitialized } = useAuth()
+  const { isInitialized, loading } = useAuth()
+  if (loading) return <AuthLoading />
   if (!isInitialized) return <Navigate to="/kurulum" replace />
   return children
 }

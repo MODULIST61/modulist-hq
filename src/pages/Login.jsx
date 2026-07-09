@@ -5,16 +5,36 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 
 export default function Login() {
-  const { isInitialized, login, currentUser } = useAuth()
+  const { isInitialized, login, currentUser, loading: authLoading, configError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  if (authLoading) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center text-slate-500">
+        Yükleniyor...
+      </div>
+    )
+  }
+
+  if (configError) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center p-4">
+        <div className="max-w-md text-center">
+          <p className="text-danger font-medium mb-2">Supabase bağlantı hatası</p>
+          <p className="text-sm text-slate-500">{configError}</p>
+          <p className="text-xs text-slate-400 mt-2">.env dosyasında VITE_SUPABASE_URL ve VITE_SUPABASE_ANON_KEY kontrol edin.</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!isInitialized) return <Navigate to="/kurulum" replace />
   if (currentUser) return <Navigate to="/" replace />
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     if (!email || !password) {
@@ -22,11 +42,9 @@ export default function Login() {
       return
     }
     setLoading(true)
-    setTimeout(() => {
-      const result = login(email, password)
-      if (!result.ok) setError(result.error)
-      setLoading(false)
-    }, 300)
+    const result = await login(email, password)
+    if (!result.ok) setError(result.error)
+    setLoading(false)
   }
 
   return (

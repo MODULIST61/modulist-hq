@@ -116,44 +116,61 @@ export default function Messages() {
 
   const activeUsers = users.filter((u) => u.status === 'aktif')
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!text.trim()) return
-    if (isDmMode) {
-      sendDm(activeThread.id, text.trim(), activeUsers)
-    } else if (canWriteRoomNow && activeRoom) {
-      addMessage({
-        room_id: activeRoom.id,
-        user_id: currentUser.id,
-        text: text.trim(),
-        type: msgType,
-        reply_to_id: replyTo?.id || null,
-        attachments,
-        is_dm: false,
-      }, activeUsers)
-    } else return
-    setText('')
-    setReplyTo(null)
-    setAttachments([])
-    setMsgType('normal')
+    const payload = text.trim()
+    try {
+      if (isDmMode) {
+        await sendDm(activeThread.id, payload, activeUsers)
+      } else if (canWriteRoomNow && activeRoom) {
+        await addMessage({
+          room_id: activeRoom.id,
+          user_id: currentUser.id,
+          text: payload,
+          type: msgType,
+          reply_to_id: replyTo?.id || null,
+          attachments,
+          is_dm: false,
+        }, activeUsers)
+      } else return
+      setText('')
+      setReplyTo(null)
+      setAttachments([])
+      setMsgType('normal')
+    } catch (e) {
+      alert(e.message || 'Mesaj gönderilemedi.')
+    }
   }
 
-  const handleBroadcast = () => {
+  const handleBroadcast = async () => {
     if (!broadcastForm.text.trim()) return
-    const count = broadcastPatron(broadcastForm, activeUsers)
-    alert(`${count} mesaj gönderildi.`)
-    setBroadcastModal(false)
-    setBroadcastForm({ text: '', type: 'duyuru', toAllRooms: true, toGenel: true })
+    try {
+      const count = await broadcastPatron(broadcastForm, activeUsers)
+      alert(`${count} mesaj gönderildi.`)
+      setBroadcastModal(false)
+      setBroadcastForm({ text: '', type: 'duyuru', toAllRooms: true, toGenel: true })
+    } catch (e) {
+      alert(e.message || 'Duyuru gönderilemedi.')
+    }
   }
 
-  const startDm = (userId) => {
-    const thread = getOrCreateDmThread(userId)
-    setSearchParams({ panel: 'dm', dm: thread.id })
-    setNewDmModal(false)
+  const startDm = async (userId) => {
+    try {
+      const thread = await getOrCreateDmThread(userId)
+      setSearchParams({ panel: 'dm', dm: thread.id })
+      setNewDmModal(false)
+    } catch (e) {
+      alert(e.message || 'Direkt mesaj başlatılamadı.')
+    }
   }
 
-  const handlePin = (msg) => {
+  const handlePin = async (msg) => {
     if (!isPatron(currentUser) && msg.user_id !== currentUser.id) return
-    updateMessage(msg.id, { pinned: !msg.pinned })
+    try {
+      await updateMessage(msg.id, { pinned: !msg.pinned })
+    } catch (e) {
+      alert(e.message || 'Pin güncellenemedi.')
+    }
   }
 
   const openTaskModal = (msg) => {

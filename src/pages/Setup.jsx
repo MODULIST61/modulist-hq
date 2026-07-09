@@ -6,10 +6,26 @@ import { Input } from '../components/ui/Input'
 import { validateEmail } from '../lib/utils'
 
 export default function Setup() {
-  const { isInitialized, setupPatron } = useAuth()
+  const { isInitialized, setupPatron, loading: authLoading, configError } = useAuth()
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+
+  if (authLoading) {
+    return <div className="min-h-[100dvh] flex items-center justify-center text-slate-500">Yükleniyor...</div>
+  }
+
+  if (configError) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center p-4 text-center">
+        <div>
+          <p className="text-danger font-medium">{configError}</p>
+          <p className="text-xs text-slate-400 mt-2">.env dosyasını kontrol edin.</p>
+        </div>
+      </div>
+    )
+  }
 
   if (isInitialized) return <Navigate to="/giris" replace />
 
@@ -25,15 +41,18 @@ export default function Setup() {
     return Object.keys(e).length === 0
   }
 
-  const handleSubmit = (ev) => {
+  const handleSubmit = async (ev) => {
     ev.preventDefault()
     if (!validate()) return
     setLoading(true)
-    setTimeout(() => {
-      setupPatron({ name: form.name, email: form.email, password: form.password })
+    setSubmitError('')
+    const result = await setupPatron({ name: form.name, email: form.email, password: form.password })
+    if (result.ok) {
       window.location.href = '/'
+    } else {
+      setSubmitError(result.error)
       setLoading(false)
-    }, 400)
+    }
   }
 
   return (
@@ -55,6 +74,7 @@ export default function Setup() {
           <Input label="E-posta" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} error={errors.email} placeholder="patron@modulist.net" />
           <Input label="Şifre" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} error={errors.password} />
           <Input label="Şifre Tekrar" type="password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} error={errors.confirm} />
+          {submitError && <p className="text-sm text-danger">{submitError}</p>}
           <Button type="submit" className="w-full" size="lg" disabled={loading}>
             {loading ? 'Başlatılıyor...' : "HQ'yu Başlat"}
           </Button>

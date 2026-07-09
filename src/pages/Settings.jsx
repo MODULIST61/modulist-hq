@@ -92,7 +92,7 @@ export default function Settings() {
 
         <Card className="p-5 border-danger/30">
           <h2 className="font-semibold mb-2 text-danger">Tehlikeli Bölge</h2>
-          <p className="text-sm text-slate-500 mb-3">Tüm localStorage verisi silinir ve kurulum ekranına dönülür.</p>
+          <p className="text-sm text-slate-500 mb-3">Tüm Supabase verisi SQL Editor üzerinden sıfırlanmalıdır.</p>
           <Button variant="danger" onClick={handleReset}>Tüm veriyi sıfırla</Button>
         </Card>
 

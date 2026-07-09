@@ -19,6 +19,8 @@ export default function Team() {
     preset: 'sekreter', job_title: 'Sekreter', permissions: createPermissionsFromPreset('sekreter'),
   })
   const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const openAdd = () => {
     setForm({
@@ -96,49 +98,77 @@ export default function Team() {
     status: form.status || 'aktif',
   })
 
-  const handleSave = () => {
-    if (!validate()) return
-    if (modal === 'add') {
-      addUser({ ...memberPayload(), password: form.password })
-    } else if (modal?.type === 'edit') {
-      updateUser(modal.user.id, memberPayload())
+  const runAction = async (fn) => {
+    setSaving(true)
+    setActionError('')
+    try {
+      await fn()
+      await refreshUsers()
+      setModal(null)
+    } catch (e) {
+      setActionError(e.message || 'İşlem başarısız.')
+    } finally {
+      setSaving(false)
     }
-    refreshUsers()
-    setModal(null)
   }
 
-  const handlePermissionsSave = () => {
+  const handleSave = async () => {
+    if (!validate()) return
+    await runAction(async () => {
+      if (modal === 'add') {
+        await addUser({ ...memberPayload(), password: form.password })
+      } else if (modal?.type === 'edit') {
+        await updateUser(modal.user.id, memberPayload())
+      }
+    })
+  }
+
+  const handlePermissionsSave = async () => {
     if (!form.job_title?.trim()) {
       setErrors({ job_title: 'Görev unvanı zorunludur.' })
       return
     }
-    updateUser(modal.user.id, {
-      job_title: form.job_title.trim(),
-      permissions: form.permissions,
+    await runAction(async () => {
+      await updateUser(modal.user.id, {
+        job_title: form.job_title.trim(),
+        permissions: form.permissions,
+      })
     })
-    refreshUsers()
-    setModal(null)
   }
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!validate(true)) return
-    updateUser(modal.user.id, { password: form.password })
-    refreshUsers()
-    setModal(null)
+    await runAction(async () => {
+      await updateUser(modal.user.id, { password: form.password })
+    })
   }
 
-  const handleDelete = (user) => {
+  const handleDelete = async (user) => {
     if (user.id === currentUser.id || user.role === 'patron') return
-    if (confirm(`${user.name} silinsin mi?`)) {
-      deleteUser(user.id)
-      refreshUsers()
+    if (!confirm(`${user.name} silinsin mi?`)) return
+    setSaving(true)
+    setActionError('')
+    try {
+      await deleteUser(user.id)
+      await refreshUsers()
+    } catch (e) {
+      setActionError(e.message || 'Silme başarısız.')
+    } finally {
+      setSaving(false)
     }
   }
 
-  const toggleStatus = (user) => {
-    if (user.role === 'patron') return
-    updateUser(user.id, { status: user.status === 'aktif' ? 'pasif' : 'aktif' })
-    refreshUsers()
+  const toggleStatus = async (user) => {
+    if (user.role === 'patron' || saving) return
+    setSaving(true)
+    try {
+      await updateUser(user.id, { status: user.status === 'aktif' ? 'pasif' : 'aktif' })
+      await refreshUsers()
+    } catch (e) {
+      setActionError(e.message || 'Durum güncellenemedi.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -148,6 +178,10 @@ export default function Team() {
         subtitle="Her kişinin görevini ve erişim yetkilerini siz belirlersiniz"
         action={<Button onClick={openAdd}>+ Üye Ekle</Button>}
       />
+
+      {actionError && (
+        <p className="mb-4 text-sm text-danger bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">{actionError}</p>
+      )}
 
       {users.length <= 1 ? (
         <EmptyState
@@ -221,7 +255,7 @@ export default function Team() {
           <div className="space-y-4">
             <Input label="Yeni Şifre" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} error={errors.password} />
             <Input label="Şifre Tekrar" type="password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} error={errors.confirm} />
-            <Button onClick={handleReset} className="w-full">Kaydet</Button>
+            <Button onClick={handleReset} className="w-full" disabled={saving}>{saving ? 'Kaydediliyor...' : 'Kaydet'}</Button>
           </div>
         ) : modal?.type === 'permissions' ? (
           <div className="space-y-4">
@@ -234,7 +268,7 @@ export default function Team() {
               onPresetChange={applyPreset}
             />
             {errors.job_title && <p className="text-sm text-danger">{errors.job_title}</p>}
-            <Button onClick={handlePermissionsSave} className="w-full">Erişimi Kaydet</Button>
+            <Button onClick={handlePermissionsSave} className="w-full" disabled={saving}>{saving ? 'Kaydediliyor...' : 'Erişimi Kaydet'}</Button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -256,7 +290,7 @@ export default function Team() {
                 <option value="pasif">Pasif</option>
               </Select>
             )}
-            <Button onClick={handleSave} className="w-full">Kaydet</Button>
+            <Button onClick={handleSave} className="w-full" disabled={saving}>{saving ? 'Kaydediliyor...' : 'Kaydet'}</Button>
           </div>
         )}
       </Modal>

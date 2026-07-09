@@ -1,365 +1,421 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import * as storage from '../lib/storage'
-import { STORAGE_KEYS } from '../lib/constants'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import * as api from '../lib/api'
 import { generateId, parseMentionIds } from '../lib/utils'
-import { dmThreadId } from '../lib/dm'
-import { loadSampleData } from '../lib/seed'
 import { useAuth } from './AuthContext'
 import { canWriteRoom, isPatron, canDo } from '../lib/permissions'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 
 const DataContext = createContext(null)
 
-const emptyState = () => {
-  const init = storage.init()
-  return {
-    rooms: init.rooms,
-    messages: init.messages,
-    tasks: init.tasks,
-    companies: init.companies,
-    bugs: init.bugs,
-    campaigns: init.campaigns,
-    contents: init.contents,
-    finance: init.finance,
-    feedback: init.feedback || [],
-    dailyMetrics: init.dailyMetrics || [],
-    dmThreads: init.dmThreads || [],
-    notifications: init.notifications,
-    settings: init.settings,
-  }
+const emptyState = {
+  rooms: [],
+  messages: [],
+  tasks: [],
+  companies: [],
+  bugs: [],
+  campaigns: [],
+  contents: [],
+  finance: [],
+  feedback: [],
+  dailyMetrics: [],
+  dmThreads: [],
+  notifications: [],
+  settings: {},
 }
 
 export function DataProvider({ children }) {
   const { currentUser } = useAuth()
   const [data, setData] = useState(emptyState)
+  const [loading, setLoading] = useState(true)
+  const dataRef = useRef(data)
+  dataRef.current = data
 
-  const persist = useCallback((next) => {
-    setData((prev) => {
-      const merged = typeof next === 'function' ? next(prev) : { ...prev, ...next }
-      const full = storage.init()
-      storage.persistAll({ ...full, ...merged })
-      return merged
-    })
+  const reload = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setLoading(false)
+      return
+    }
+    try {
+      const next = await api.fetchAllData()
+      setData(next)
+    } catch (e) {
+      console.error('Veri yükleme hatası:', e)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
-    setData(emptyState())
+    reload()
+  }, [reload])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined
+    return api.subscribeToRealtime((table) => {
+      if (['messages', 'notifications', 'tasks', 'dmThreads'].includes(table)) {
+        reload()
+      }
+    })
+  }, [reload])
+
+  const setLocal = useCallback((updater) => {
+    setData((prev) => (typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }))
   }, [])
 
-  const addNotification = useCallback(
-    (notif) => {
-      persist((prev) => ({
-        ...prev,
-        notifications: [
-          { id: generateId(), okundu: false, created_at: new Date().toISOString(), ...notif },
-          ...prev.notifications,
-        ],
-      }))
-    },
-    [persist]
-  )
+  const addNotification = useCallback(async (notif) => {
+    const row = {
+      user_id: notif.user_id,
+      tip: notif.tip,
+      ref: notif.ref || {},
+      okundu: false,
+    }
+    const saved = await api.insertNotification(row)
+    setLocal((prev) => ({ ...prev, notifications: [saved, ...prev.notifications] }))
+    return saved
+  }, [setLocal])
 
-  const markNotificationRead = useCallback(
-    (id) => persist((prev) => ({
+  const markNotificationRead = useCallback(async (id) => {
+    await api.patchNotification(id, { okundu: true })
+    setLocal((prev) => ({
       ...prev,
       notifications: prev.notifications.map((n) => (n.id === id ? { ...n, okundu: true } : n)),
-    })),
-    [persist]
-  )
+    }))
+  }, [setLocal])
 
-  const markAllNotificationsRead = useCallback(
-    (userId) => persist((prev) => ({
+  const markAllNotificationsRead = useCallback(async (userId) => {
+    await api.markAllNotificationsReadDb(userId)
+    setLocal((prev) => ({
       ...prev,
       notifications: prev.notifications.map((n) => (n.user_id === userId ? { ...n, okundu: true } : n)),
-    })),
-    [persist]
-  )
+    }))
+  }, [setLocal])
 
-  const addMessage = useCallback(
-    (msg, users) => {
-      const message = {
-        id: generateId(),
-        created_at: new Date().toISOString(),
-        pinned: false,
-        reply_to_id: null,
-        attachments: [],
-        linked_record_type: null,
-        linked_record_id: null,
-        mentions: [],
+  const addMessage = useCallback(async (msg, users) => {
+    const payload = {
+      room_id: msg.room_id,
+      user_id: msg.user_id || currentUser?.id,
+      text: msg.text,
+      type: msg.type || 'normal',
+      mentions: [],
+      pinned: msg.pinned || false,
+      reply_to_id: msg.reply_to_id || null,
+      attachments: msg.attachments || [],
+      linked_record_type: msg.linked_record_type || null,
+      linked_record_id: msg.linked_record_id || null,
+      is_dm: msg.is_dm || false,
+    }
+    if (msg.text && users) {
+      payload.mentions = parseMentionIds(msg.text, users)
+      for (const uid of payload.mentions) {
+        if (uid !== currentUser?.id) {
+          await addNotification({
+            tip: 'mention',
+            user_id: uid,
+            ref: { room_id: payload.room_id, is_dm: payload.is_dm },
+          })
+        }
+      }
+    }
+    const saved = await api.insertMessage(payload)
+    setLocal((prev) => ({ ...prev, messages: [...prev.messages, saved] }))
+    return saved
+  }, [currentUser, addNotification, setLocal])
+
+  const updateMessage = useCallback(async (id, updates) => {
+    const saved = await api.patchMessage(id, updates)
+    setLocal((prev) => ({
+      ...prev,
+      messages: prev.messages.map((m) => (m.id === id ? saved : m)),
+    }))
+  }, [setLocal])
+
+  const broadcastPatron = useCallback(async ({ text, type, toAllRooms, toGenel }, users) => {
+    const rooms = dataRef.current.rooms
+    const msgs = []
+    if (toAllRooms) {
+      rooms.forEach((room) => {
+        if (canWriteRoom(currentUser, room.slug)) {
+          msgs.push({ room_id: room.id, user_id: currentUser.id, text, type: type || 'duyuru', is_dm: false })
+        }
+      })
+    }
+    if (toGenel) {
+      const mentionText = users
+        .filter((u) => u.status === 'aktif' && u.id !== currentUser.id)
+        .map((u) => `@${u.name}`)
+        .join(' ')
+      msgs.push({
+        room_id: 'genel',
+        user_id: currentUser.id,
+        text: `${text}\n\n${mentionText}`.trim(),
+        type: type || 'duyuru',
+        pinned: true,
         is_dm: false,
-        ...msg,
-      }
-      if (msg.text && users) {
-        message.mentions = parseMentionIds(msg.text, users)
-        message.mentions.forEach((uid) => {
-          if (uid !== currentUser?.id) {
-            addNotification({
-              tip: 'mention',
-              user_id: uid,
-              ref: { message_id: message.id, room_id: message.room_id, is_dm: message.is_dm },
-            })
-          }
-        })
-      }
-      persist((prev) => ({ ...prev, messages: [...prev.messages, message] }))
-      return message
-    },
-    [persist, currentUser, addNotification]
-  )
+      })
+    }
+    for (const m of msgs) await addMessage(m, users)
+    return msgs.length
+  }, [currentUser, addMessage])
 
-  const updateMessage = useCallback(
-    (id, updates) => persist((prev) => ({
+  const getOrCreateDmThread = useCallback(async (otherUserId) => {
+    const thread = await api.getOrCreateDmThreadDb(currentUser.id, otherUserId)
+    setLocal((prev) => {
+      const exists = prev.dmThreads.find((t) => t.id === thread.id)
+      if (exists) return prev
+      return { ...prev, dmThreads: [thread, ...prev.dmThreads] }
+    })
+    return thread
+  }, [currentUser, setLocal])
+
+  const sendDm = useCallback(async (threadId, text, users) => {
+    await addMessage({ room_id: threadId, user_id: currentUser.id, text, type: 'normal', is_dm: true }, users)
+    const partner = dataRef.current.dmThreads.find((t) => t.id === threadId)?.participants?.find((p) => p !== currentUser.id)
+    if (partner) {
+      await addNotification({ tip: 'dm', user_id: partner, ref: { room_id: threadId, is_dm: true } })
+    }
+    await api.touchDmThread(threadId)
+    await reload()
+  }, [addMessage, addNotification, currentUser, reload])
+
+  const addTask = useCallback(async (task) => {
+    const row = {
+      baslik: task.baslik,
+      aciklama: task.aciklama || null,
+      sorumlu_id: task.sorumlu_id || null,
+      olusturan_id: task.olusturan_id || currentUser?.id,
+      durum: task.durum || 'yapilacak',
+      oncelik: task.oncelik || 'normal',
+      bitis_tarihi: task.bitis_tarihi || null,
+      room_id: task.room_id || null,
+      kayit_tipi: task.kayit_tipi || null,
+      kayit_id: task.kayit_id || null,
+    }
+    const saved = await api.insertTask(row)
+    setLocal((prev) => ({ ...prev, tasks: [saved, ...prev.tasks] }))
+    if (saved.sorumlu_id && saved.sorumlu_id !== currentUser?.id) {
+      await addNotification({ tip: 'gorev_atandi', user_id: saved.sorumlu_id, ref: { task_id: saved.id } })
+    }
+    return saved
+  }, [currentUser, addNotification, setLocal])
+
+  const updateTask = useCallback(async (id, updates) => {
+    const saved = await api.patchTask(id, updates)
+    setLocal((prev) => ({
       ...prev,
-      messages: prev.messages.map((m) => (m.id === id ? { ...m, ...updates } : m)),
-    })),
-    [persist]
-  )
-
-  const broadcastPatron = useCallback(
-    ({ text, type, toAllRooms, toGenel }, users) => {
-      const { rooms: allRooms } = storage.init()
-      const msgs = []
-      if (toAllRooms) {
-        allRooms.forEach((room) => {
-          if (canWriteRoom(currentUser, room.slug)) {
-            msgs.push({ room_id: room.id, user_id: currentUser.id, text, type: type || 'duyuru', is_dm: false })
-          }
-        })
-      }
-      if (toGenel) {
-        const mentionText = users
-          .filter((u) => u.status === 'aktif' && u.id !== currentUser.id)
-          .map((u) => `@${u.name}`)
-          .join(' ')
-        msgs.push({
-          room_id: 'genel',
-          user_id: currentUser.id,
-          text: `${text}\n\n${mentionText}`.trim(),
-          type: type || 'duyuru',
-          pinned: true,
-          is_dm: false,
-        })
-      }
-      msgs.forEach((m) => addMessage(m, users))
-      return msgs.length
-    },
-    [currentUser, addMessage]
-  )
-
-  const getOrCreateDmThread = useCallback(
-    (otherUserId) => {
-      const tid = dmThreadId(currentUser.id, otherUserId)
-      const threads = storage.get(STORAGE_KEYS.DM_THREADS, [])
-      const existing = threads.find((t) => t.id === tid)
-      if (existing) return existing
-      const thread = {
-        id: tid,
-        participants: [currentUser.id, otherUserId].sort(),
-        created_at: new Date().toISOString(),
-        last_message_at: new Date().toISOString(),
-      }
-      persist((prev) => ({ ...prev, dmThreads: [...(prev.dmThreads || []), thread] }))
-      return thread
-    },
-    [currentUser, persist]
-  )
-
-  const sendDm = useCallback(
-    (threadId, text, users) => {
-      addMessage({ room_id: threadId, user_id: currentUser.id, text, type: 'normal', is_dm: true }, users)
-      const partner = data.dmThreads.find((t) => t.id === threadId)?.participants.find((p) => p !== currentUser.id)
-      if (partner) {
-        addNotification({ tip: 'mention', user_id: partner, ref: { room_id: threadId, is_dm: true } })
-      }
-      persist((prev) => ({
-        ...prev,
-        dmThreads: prev.dmThreads.map((t) =>
-          t.id === threadId ? { ...t, last_message_at: new Date().toISOString() } : t
-        ),
-      }))
-    },
-    [addMessage, addNotification, currentUser, data.dmThreads, persist]
-  )
-
-  const addTask = useCallback(
-    (task) => {
-      const t = {
-        id: generateId(),
-        durum: 'yapilacak',
-        oncelik: 'normal',
-        kayit_tipi: null,
-        kayit_id: null,
-        created_at: new Date().toISOString(),
-        olusturan_id: currentUser?.id,
-        ...task,
-      }
-      persist((prev) => ({ ...prev, tasks: [...prev.tasks, t] }))
-      if (t.sorumlu_id && t.sorumlu_id !== currentUser?.id) {
-        addNotification({ tip: 'gorev_atandi', user_id: t.sorumlu_id, ref: { task_id: t.id } })
-      }
-      return t
-    },
-    [persist, currentUser, addNotification]
-  )
-
-  const updateTask = useCallback(
-    (id, updates) => persist((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) => (t.id === id ? { ...t, ...updates, updated_at: new Date().toISOString() } : t)),
-    })),
-    [persist]
-  )
-
-  const deleteTask = useCallback((id) => persist((prev) => ({ ...prev, tasks: prev.tasks.filter((t) => t.id !== id) })), [persist])
-
-  const upsertCompany = useCallback((company) => {
-    persist((prev) => {
-      const exists = prev.companies.find((c) => c.id === company.id)
-      const updated = { ...company, updated_at: new Date().toISOString() }
-      if (exists) return { ...prev, companies: prev.companies.map((c) => (c.id === company.id ? updated : c)) }
-      return {
-        ...prev,
-        companies: [{ ...updated, id: company.id || generateId(), created_at: new Date().toISOString() }, ...prev.companies],
-      }
-    })
-  }, [persist])
-
-  const deleteCompany = useCallback((id) => persist((prev) => ({ ...prev, companies: prev.companies.filter((c) => c.id !== id) })), [persist])
-
-  const upsertBug = useCallback((bug) => {
-    persist((prev) => {
-      const exists = prev.bugs.find((b) => b.id === bug.id)
-      const updated = { ...bug, updated_at: new Date().toISOString() }
-      if (bug.durum === 'kapali' && !updated.kapanis_tarihi) updated.kapanis_tarihi = new Date().toISOString().split('T')[0]
-      if (exists) return { ...prev, bugs: prev.bugs.map((b) => (b.id === bug.id ? updated : b)) }
-      return {
-        ...prev,
-        bugs: [{ ...updated, id: bug.id || generateId(), bildiren_id: bug.bildiren_id || currentUser?.id, created_at: new Date().toISOString() }, ...prev.bugs],
-      }
-    })
-  }, [persist, currentUser])
-
-  const deleteBug = useCallback((id) => persist((prev) => ({ ...prev, bugs: prev.bugs.filter((b) => b.id !== id) })), [persist])
-
-  const upsertCampaign = useCallback((campaign) => {
-    persist((prev) => {
-      const exists = prev.campaigns.find((c) => c.id === campaign.id)
-      if (exists) return { ...prev, campaigns: prev.campaigns.map((c) => (c.id === campaign.id ? campaign : c)) }
-      return { ...prev, campaigns: [{ ...campaign, id: campaign.id || generateId(), created_at: new Date().toISOString() }, ...prev.campaigns] }
-    })
-  }, [persist])
-
-  const deleteCampaign = useCallback((id) => persist((prev) => ({ ...prev, campaigns: prev.campaigns.filter((c) => c.id !== id) })), [persist])
-
-  const upsertContent = useCallback((content) => {
-    persist((prev) => {
-      const exists = prev.contents.find((c) => c.id === content.id)
-      if (exists) return { ...prev, contents: prev.contents.map((c) => (c.id === content.id ? content : c)) }
-      return { ...prev, contents: [{ ...content, id: content.id || generateId(), created_at: new Date().toISOString() }, ...prev.contents] }
-    })
-  }, [persist])
-
-  const deleteContent = useCallback((id) => persist((prev) => ({ ...prev, contents: prev.contents.filter((c) => c.id !== id) })), [persist])
-
-  const upsertFinance = useCallback((entry) => {
-    persist((prev) => {
-      const exists = prev.finance.find((f) => f.id === entry.id)
-      const item = {
-        ...entry,
-        id: entry.id || generateId(),
-        created_at: entry.created_at || new Date().toISOString(),
-        giren_id: entry.giren_id || currentUser?.id,
-      }
-      if (exists) return { ...prev, finance: prev.finance.map((f) => (f.id === entry.id ? item : f)) }
-      if (item.tip === 'gider' && !isPatron(currentUser) && !canDo(currentUser, 'approveFinance') && !item.durum) item.durum = 'bekliyor'
-      if ((isPatron(currentUser) || canDo(currentUser, 'approveFinance')) && item.durum === 'onaylandi' && !item.onaylayan_id) {
-        item.onaylayan_id = currentUser.id
-        item.onay_tarihi = new Date().toISOString()
-      }
-      return { ...prev, finance: [item, ...prev.finance] }
-    })
-  }, [persist, currentUser])
-
-  const approveFinance = useCallback((id) => {
-    persist((prev) => ({
-      ...prev,
-      finance: prev.finance.map((f) =>
-        f.id === id ? { ...f, durum: 'onaylandi', onaylayan_id: currentUser?.id, onay_tarihi: new Date().toISOString() } : f
-      ),
+      tasks: prev.tasks.map((t) => (t.id === id ? saved : t)),
     }))
-  }, [persist, currentUser])
+  }, [setLocal])
 
-  const rejectFinance = useCallback((id) => {
-    persist((prev) => ({
+  const deleteTask = useCallback(async (id) => {
+    await api.removeTask(id)
+    setLocal((prev) => ({ ...prev, tasks: prev.tasks.filter((t) => t.id !== id) }))
+  }, [setLocal])
+
+  const upsertCompany = useCallback(async (company) => {
+    const saved = await api.upsertRecord('hq_companies', company)
+    setLocal((prev) => {
+      const exists = prev.companies.find((c) => c.id === saved.id)
+      return {
+        ...prev,
+        companies: exists
+          ? prev.companies.map((c) => (c.id === saved.id ? saved : c))
+          : [saved, ...prev.companies],
+      }
+    })
+  }, [setLocal])
+
+  const deleteCompany = useCallback(async (id) => {
+    await api.deleteFrom('hq_companies', id)
+    setLocal((prev) => ({ ...prev, companies: prev.companies.filter((c) => c.id !== id) }))
+  }, [setLocal])
+
+  const upsertBug = useCallback(async (bug) => {
+    const row = { ...bug, bildiren_id: bug.bildiren_id || currentUser?.id }
+    if (row.durum === 'kapali' && !row.kapanis_tarihi) row.kapanis_tarihi = new Date().toISOString().split('T')[0]
+    const saved = await api.upsertRecord('hq_bugs', row)
+    setLocal((prev) => {
+      const exists = prev.bugs.find((b) => b.id === saved.id)
+      return {
+        ...prev,
+        bugs: exists ? prev.bugs.map((b) => (b.id === saved.id ? saved : b)) : [saved, ...prev.bugs],
+      }
+    })
+  }, [currentUser, setLocal])
+
+  const deleteBug = useCallback(async (id) => {
+    await api.deleteFrom('hq_bugs', id)
+    setLocal((prev) => ({ ...prev, bugs: prev.bugs.filter((b) => b.id !== id) }))
+  }, [setLocal])
+
+  const upsertCampaign = useCallback(async (campaign) => {
+    const saved = await api.upsertRecord('hq_campaigns', campaign)
+    setLocal((prev) => {
+      const exists = prev.campaigns.find((c) => c.id === saved.id)
+      return {
+        ...prev,
+        campaigns: exists ? prev.campaigns.map((c) => (c.id === saved.id ? saved : c)) : [saved, ...prev.campaigns],
+      }
+    })
+  }, [setLocal])
+
+  const deleteCampaign = useCallback(async (id) => {
+    await api.deleteFrom('hq_campaigns', id)
+    setLocal((prev) => ({ ...prev, campaigns: prev.campaigns.filter((c) => c.id !== id) }))
+  }, [setLocal])
+
+  const upsertContent = useCallback(async (content) => {
+    const saved = await api.upsertRecord('hq_contents', content)
+    setLocal((prev) => {
+      const exists = prev.contents.find((c) => c.id === saved.id)
+      return {
+        ...prev,
+        contents: exists ? prev.contents.map((c) => (c.id === saved.id ? saved : c)) : [saved, ...prev.contents],
+      }
+    })
+  }, [setLocal])
+
+  const deleteContent = useCallback(async (id) => {
+    await api.deleteFrom('hq_contents', id)
+    setLocal((prev) => ({ ...prev, contents: prev.contents.filter((c) => c.id !== id) }))
+  }, [setLocal])
+
+  const upsertFinance = useCallback(async (entry) => {
+    const item = {
+      ...entry,
+      giren_id: entry.giren_id || currentUser?.id,
+      firma_id: entry.firma_id || null,
+      kampanya_id: entry.kampanya_id || null,
+    }
+    if (item.tip === 'gider' && !isPatron(currentUser) && !canDo(currentUser, 'approveFinance') && !item.durum) {
+      item.durum = 'bekliyor'
+    }
+    if ((isPatron(currentUser) || canDo(currentUser, 'approveFinance')) && item.durum === 'onaylandi' && !item.onaylayan_id) {
+      item.onaylayan_id = currentUser.id
+      item.onay_tarihi = new Date().toISOString()
+    }
+    const saved = await api.upsertRecord('hq_finance', item)
+    setLocal((prev) => {
+      const exists = prev.finance.find((f) => f.id === saved.id)
+      return {
+        ...prev,
+        finance: exists ? prev.finance.map((f) => (f.id === saved.id ? saved : f)) : [saved, ...prev.finance],
+      }
+    })
+  }, [currentUser, setLocal])
+
+  const approveFinance = useCallback(async (id) => {
+    const { data, error } = await supabase.from('hq_finance').update({
+      durum: 'onaylandi',
+      onaylayan_id: currentUser?.id,
+      onay_tarihi: new Date().toISOString(),
+    }).eq('id', id).select().single()
+    if (error) throw error
+    setLocal((prev) => ({
       ...prev,
-      finance: prev.finance.map((f) =>
-        f.id === id ? { ...f, durum: 'reddedildi', onaylayan_id: currentUser?.id, onay_tarihi: new Date().toISOString() } : f
-      ),
+      finance: prev.finance.map((f) => (f.id === id ? data : f)),
     }))
-  }, [persist, currentUser])
+  }, [currentUser, setLocal])
 
-  const deleteFinance = useCallback((id) => persist((prev) => ({ ...prev, finance: prev.finance.filter((f) => f.id !== id) })), [persist])
+  const rejectFinance = useCallback(async (id) => {
+    const { data, error } = await supabase.from('hq_finance').update({
+      durum: 'reddedildi',
+      onaylayan_id: currentUser?.id,
+      onay_tarihi: new Date().toISOString(),
+    }).eq('id', id).select().single()
+    if (error) throw error
+    setLocal((prev) => ({
+      ...prev,
+      finance: prev.finance.map((f) => (f.id === id ? data : f)),
+    }))
+  }, [currentUser, setLocal])
 
-  const upsertFeedback = useCallback((fb) => {
-    persist((prev) => {
-      const exists = prev.feedback.find((f) => f.id === fb.id)
-      const item = { ...fb, updated_at: new Date().toISOString() }
-      if (exists) return { ...prev, feedback: prev.feedback.map((f) => (f.id === fb.id ? item : f)) }
+  const deleteFinance = useCallback(async (id) => {
+    await api.deleteFrom('hq_finance', id)
+    setLocal((prev) => ({ ...prev, finance: prev.finance.filter((f) => f.id !== id) }))
+  }, [setLocal])
+
+  const upsertFeedback = useCallback(async (fb) => {
+    const saved = await api.upsertRecord('hq_feedback', { ...fb, user_id: fb.user_id || currentUser?.id })
+    setLocal((prev) => {
+      const exists = prev.feedback.find((f) => f.id === saved.id)
       return {
         ...prev,
-        feedback: [{ ...item, id: fb.id || generateId(), created_at: new Date().toISOString(), durum: fb.durum || 'yeni' }, ...prev.feedback],
+        feedback: exists ? prev.feedback.map((f) => (f.id === saved.id ? saved : f)) : [saved, ...prev.feedback],
       }
     })
-  }, [persist])
+  }, [currentUser, setLocal])
 
-  const deleteFeedback = useCallback((id) => persist((prev) => ({ ...prev, feedback: prev.feedback.filter((f) => f.id !== id) })), [persist])
+  const deleteFeedback = useCallback(async (id) => {
+    await api.deleteFrom('hq_feedback', id)
+    setLocal((prev) => ({ ...prev, feedback: prev.feedback.filter((f) => f.id !== id) }))
+  }, [setLocal])
 
-  const upsertDailyMetric = useCallback((metric) => {
-    persist((prev) => {
-      const exists = prev.dailyMetrics.find((m) => m.id === metric.id)
-      const item = { ...metric, user_id: metric.user_id || currentUser?.id }
-      if (exists) return { ...prev, dailyMetrics: prev.dailyMetrics.map((m) => (m.id === metric.id ? item : m)) }
-      const dup = prev.dailyMetrics.find((m) => m.tarih === item.tarih && m.user_id === item.user_id)
-      if (dup) return { ...prev, dailyMetrics: prev.dailyMetrics.map((m) => (m.id === dup.id ? { ...item, id: dup.id } : m)) }
+  const upsertDailyMetric = useCallback(async (metric) => {
+    const item = { ...metric, user_id: metric.user_id || currentUser?.id }
+    const dup = dataRef.current.dailyMetrics.find((m) => m.tarih === item.tarih && m.user_id === item.user_id)
+    const saved = await api.upsertRecord('hq_daily_metrics', dup ? { ...item, id: dup.id } : item)
+    setLocal((prev) => {
+      const exists = prev.dailyMetrics.find((m) => m.id === saved.id)
       return {
         ...prev,
-        dailyMetrics: [{ ...item, id: metric.id || generateId(), created_at: new Date().toISOString() }, ...prev.dailyMetrics],
+        dailyMetrics: exists
+          ? prev.dailyMetrics.map((m) => (m.id === saved.id ? saved : m))
+          : [saved, ...prev.dailyMetrics],
       }
     })
-  }, [persist, currentUser])
+  }, [currentUser, setLocal])
 
-  const deleteDailyMetric = useCallback((id) => persist((prev) => ({ ...prev, dailyMetrics: prev.dailyMetrics.filter((m) => m.id !== id) })), [persist])
+  const deleteDailyMetric = useCallback(async (id) => {
+    await api.deleteFrom('hq_daily_metrics', id)
+    setLocal((prev) => ({ ...prev, dailyMetrics: prev.dailyMetrics.filter((m) => m.id !== id) }))
+  }, [setLocal])
 
-  const updateSettings = useCallback((updates) => persist((prev) => ({ ...prev, settings: { ...prev.settings, ...updates } })), [persist])
+  const updateSettings = useCallback(async (updates) => {
+    const merged = await api.updateWorkspaceSettings(updates)
+    setLocal((prev) => ({ ...prev, settings: merged }))
+  }, [setLocal])
 
   const resetAllData = useCallback(() => {
-    storage.clearAll()
-    window.location.href = '/kurulum'
+    alert('Veri sıfırlama Supabase üzerinden yapılmalı. SQL Editor kullanın.')
   }, [])
 
-  const loadSample = useCallback((patronId) => persist((prev) => loadSampleData(prev, patronId)), [persist])
-
-  const addUser = useCallback((user) => {
-    const users = storage.get(STORAGE_KEYS.USERS, [])
-    const newUser = { ...user, id: generateId(), status: 'aktif', created_at: new Date().toISOString() }
-    storage.set(STORAGE_KEYS.USERS, [...users, newUser])
-    return newUser
+  const loadSample = useCallback(async (patronId) => {
+    const next = await api.insertSampleData(patronId, dataRef.current)
+    setData(next)
   }, [])
 
-  const updateUser = useCallback((id, updates) => {
-    const users = storage.get(STORAGE_KEYS.USERS, [])
-    storage.set(STORAGE_KEYS.USERS, users.map((u) => (u.id === id ? { ...u, ...updates } : u)))
+  const addUser = useCallback(async (user) => {
+    const id = await api.addMember({
+      name: user.name,
+      email: user.email,
+      password: user.password,
+      job_title: user.job_title,
+      permissions: user.permissions,
+    })
+    return { id, ...user }
   }, [])
 
-  const deleteUser = useCallback((id) => {
-    const users = storage.get(STORAGE_KEYS.USERS, [])
-    storage.set(STORAGE_KEYS.USERS, users.filter((u) => u.id !== id))
+  const updateUser = useCallback(async (id, updates) => {
+    if (updates.password) {
+      await api.resetPassword(id, updates.password)
+      const { password, ...rest } = updates
+      if (Object.keys(rest).length) await api.updateUserRecord(id, rest)
+    } else {
+      await api.updateUserRecord(id, updates)
+    }
+  }, [])
+
+  const deleteUser = useCallback(async (id) => {
+    await api.deleteUserRecord(id)
   }, [])
 
   return (
     <DataContext.Provider
       value={{
         ...data,
-        persist,
+        loading,
+        reload,
         addMessage,
         updateMessage,
         broadcastPatron,

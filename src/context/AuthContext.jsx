@@ -1,83 +1,89 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import * as storage from '../lib/storage'
-import { STORAGE_KEYS } from '../lib/constants'
-import { ROLES } from '../lib/constants'
-import { generateId } from '../lib/utils'
-import { seedWorkspace } from '../lib/seed'
 import { migrateUser } from '../lib/access'
+import * as api from '../lib/api'
+import * as session from '../lib/session'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
-function loadAndMigrateUsers() {
-  const users = storage.get(STORAGE_KEYS.USERS, [])
-  const migrated = users.map(migrateUser)
-  const changed = migrated.some((u, i) => JSON.stringify(u) !== JSON.stringify(users[i]))
-  if (changed) storage.set(STORAGE_KEYS.USERS, migrated)
-  return migrated
-}
-
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(() => storage.getSession())
-  const [users, setUsers] = useState(() => loadAndMigrateUsers())
+  const [sessionState, setSessionState] = useState(() => session.getSession())
+  const [users, setUsers] = useState([])
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [configError, setConfigError] = useState(null)
+
+  const refreshUsers = useCallback(async () => {
+    const list = await api.fetchUsers()
+    setUsers(list)
+    return list
+  }, [])
+
+  const bootstrap = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setConfigError('Supabase yapılandırması eksik (.env)')
+      setLoading(false)
+      return
+    }
+    try {
+      const ws = await api.fetchWorkspace()
+      setIsInitialized(ws.initialized)
+      await refreshUsers()
+    } catch (e) {
+      console.error(e)
+      setConfigError(e.message || 'Supabase bağlantı hatası')
+    } finally {
+      setLoading(false)
+    }
+  }, [refreshUsers])
 
   useEffect(() => {
-    const data = storage.init()
-    const migrated = loadAndMigrateUsers()
-    setUsers(migrated.length ? migrated : data.users.map(migrateUser))
-    setSession(storage.getSession())
-  }, [])
+    bootstrap()
+  }, [bootstrap])
 
-  const currentUser = users.find((u) => u.id === session?.userId && u.status !== 'pasif') || null
-  const isInitialized = storage.get(STORAGE_KEYS.INITIALIZED, false)
+  const currentUser = users.find((u) => u.id === sessionState?.userId && u.status !== 'pasif') || null
 
-  const login = useCallback((email, password) => {
-    const allUsers = loadAndMigrateUsers()
-    const user = allUsers.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password && u.status !== 'pasif'
-    )
-    if (!user) return { ok: false, error: 'E-posta veya şifre hatalı.' }
-    storage.setSession(user.id)
-    setSession({ userId: user.id, loginAt: new Date().toISOString() })
-    setUsers(allUsers)
-    return { ok: true }
-  }, [])
+  const login = useCallback(async (email, password) => {
+    try {
+      const user = await api.loginUser(email, password)
+      if (!user) return { ok: false, error: 'E-posta veya şifre hatalı.' }
+      session.setSession(user.id)
+      setSessionState(session.getSession())
+      await refreshUsers()
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e.message || 'Giriş başarısız.' }
+    }
+  }, [refreshUsers])
 
   const logout = useCallback(() => {
-    storage.clearSession()
-    setSession(null)
+    session.clearSession()
+    setSessionState(null)
     window.location.href = '/giris'
   }, [])
 
-  const setupPatron = useCallback(({ name, email, password }) => {
-    const patron = {
-      id: generateId(),
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      password,
-      role: ROLES.PATRON,
-      job_title: 'Patron',
-      status: 'aktif',
-      created_at: new Date().toISOString(),
+  const setupPatron = useCallback(async ({ name, email, password }) => {
+    try {
+      const id = await api.setupPatron({ name, email, password })
+      session.setSession(id)
+      setSessionState(session.getSession())
+      setIsInitialized(true)
+      await refreshUsers()
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e.message || 'Kurulum başarısız.' }
     }
-    const workspace = seedWorkspace(patron)
-    storage.persistAll(workspace)
-    storage.setSession(patron.id)
-    setUsers(workspace.users)
-    setSession({ userId: patron.id, loginAt: new Date().toISOString() })
-    return { ok: true }
-  }, [])
-
-  const refreshUsers = useCallback(() => {
-    setUsers(loadAndMigrateUsers())
-  }, [])
+  }, [refreshUsers])
 
   return (
     <AuthContext.Provider
       value={{
-        session,
+        session: sessionState,
         currentUser,
         users,
         isInitialized,
+        loading,
+        configError,
         login,
         logout,
         setupPatron,
