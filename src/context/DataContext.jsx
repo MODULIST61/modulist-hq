@@ -3,6 +3,7 @@ import * as api from '../lib/api'
 import { generateId, parseMentionIds } from '../lib/utils'
 import { devUsers, pickDevAssignee, feedbackToBugDraft, bugPriorityToTask } from '../lib/bugFlow'
 import { computeDailyMetricsFromInteractions, isPhoneInteraction } from '../lib/interactions'
+import { emptyRevenueFromCompany } from '../lib/accounting'
 import { useAuth } from './AuthContext'
 import { canWriteRoom, isPatron, canDo } from '../lib/permissions'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -307,6 +308,34 @@ export function DataProvider({ children }) {
           kayit_id: saved.id,
         })
       }
+      if (saved.pipeline === 'musteri' && saved.dekont_durumu === 'yok') {
+        const withDekont = await api.upsertRecord('hq_companies', {
+          ...saved,
+          dekont_durumu: 'bekliyor',
+        })
+        setLocal((prevState) => ({
+          ...prevState,
+          companies: prevState.companies.map((c) => (c.id === withDekont.id ? withDekont : c)),
+        }))
+        await addTask({
+          baslik: `Tahsilat: ${saved.ad} — ilk ödeme`,
+          aciklama: `${saved.ad} müşteri oldu. Dekont ve gelir kaydı oluşturun.`,
+          sorumlu_id: saved.sorumlu_id || currentUser?.id,
+          oncelik: 'yuksek',
+          kayit_tipi: 'firma',
+          kayit_id: saved.id,
+        })
+      }
+      if (saved.pipeline === 'trial' && saved.trial_bitis) {
+        await addTask({
+          baslik: `Trial bitiş tahsilat: ${saved.ad}`,
+          aciklama: `Trial ${saved.trial_bitis} tarihinde bitiyor — tahsilat planlayın`,
+          sorumlu_id: saved.sorumlu_id || currentUser?.id,
+          oncelik: 'normal',
+          kayit_tipi: 'firma',
+          kayit_id: saved.id,
+        })
+      }
     } else {
       logAudit('company_update', `Firma güncellendi: ${saved.ad}`, 'company', saved.id)
     }
@@ -555,6 +584,40 @@ export function DataProvider({ children }) {
     await api.deleteFrom('hq_finance', id)
     setLocal((prev) => ({ ...prev, finance: prev.finance.filter((f) => f.id !== id) }))
   }, [setLocal])
+
+  const createRevenueFromCompany = useCallback(async (companyId) => {
+    const company = dataRef.current.companies.find((c) => c.id === companyId)
+    if (!company) return null
+    const draft = emptyRevenueFromCompany(company, currentUser?.id)
+    const saved = await api.upsertRecord('hq_finance', { ...draft, id: generateId() })
+    setLocal((prev) => ({ ...prev, finance: [saved, ...prev.finance] }))
+    logAudit('finance_create', `Gelir kaydı: ${company.ad} (${saved.tutar} TL)`, 'finance', saved.id)
+    return saved
+  }, [currentUser, setLocal, logAudit])
+
+  const recordCollectionPayment = useCallback(async (companyId) => {
+    const company = dataRef.current.companies.find((c) => c.id === companyId)
+    if (!company) return null
+    const today = new Date().toISOString().split('T')[0]
+    const updated = await api.upsertRecord('hq_companies', {
+      ...company,
+      dekont_durumu: 'alindi',
+      son_odeme_tarihi: today,
+      pipeline: company.pipeline === 'odeme_bekliyor' ? 'musteri' : company.pipeline,
+    })
+    setLocal((prev) => ({
+      ...prev,
+      companies: prev.companies.map((c) => (c.id === updated.id ? updated : c)),
+    }))
+    const existing = dataRef.current.finance.find(
+      (f) => f.firma_id === companyId && f.tip === 'gelir' && f.tarih === today,
+    )
+    if (!existing && Number(company.aylik_tutar) > 0) {
+      await createRevenueFromCompany(companyId)
+    }
+    logAudit('company_update', `Tahsilat kaydedildi: ${company.ad}`, 'company', companyId)
+    return updated
+  }, [setLocal, logAudit, createRevenueFromCompany])
 
   const upsertFeedback = useCallback(async (fb) => {
     const prev = dataRef.current.feedback.find((f) => f.id === fb.id)
@@ -849,6 +912,8 @@ export function DataProvider({ children }) {
         approveFinance,
         rejectFinance,
         deleteFinance,
+        createRevenueFromCompany,
+        recordCollectionPayment,
         upsertFeedback,
         convertFeedbackToBug,
         deleteFeedback,

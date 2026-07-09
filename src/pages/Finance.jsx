@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { downloadCsv, financeToCsv } from '../lib/csv'
+import { uploadDekont } from '../lib/financeStorage'
 import { Button } from '../components/ui/Button'
 import { Input, Select, Textarea } from '../components/ui/Input'
 import { Modal, EmptyState } from '../components/ui/Modal'
@@ -21,6 +22,9 @@ const emptyEntry = () => ({
   tarih: new Date().toISOString().split('T')[0],
   aciklama: '',
   dekont_dosya_adi: '',
+  dekont_url: '',
+  fatura_no: '',
+  odeme_yontemi: 'havale',
   durum: 'onaylandi',
 })
 
@@ -34,6 +38,7 @@ export default function Finance({ mode = 'patron', embedded = false }) {
   const [tab, setTab] = useState('all')
   const [approvalModal, setApprovalModal] = useState(null)
   const [approvalNote, setApprovalNote] = useState('')
+  const [uploading, setUploading] = useState(false)
 
   const pending = finance.filter((f) => f.durum === 'bekliyor')
   const thisMonth = useMemo(() => finance.filter((f) => isThisMonth(f.tarih)), [finance])
@@ -54,10 +59,32 @@ export default function Finance({ mode = 'patron', embedded = false }) {
 
   const list = tab === 'pending' ? pending : tab === 'gider' ? finance.filter((f) => f.tip === 'gider') : finance
 
-  const save = () => {
+  const save = async () => {
     if (!form.tutar || !form.tarih) return
-    upsertFinance({ ...form, id: form.id || generateId(), firma_id: form.firma_id || null, kampanya_id: form.kampanya_id || null })
+    const firma = companies.find((c) => c.id === form.firma_id)
+    upsertFinance({
+      ...form,
+      id: form.id || generateId(),
+      firma_id: form.firma_id || null,
+      firma_adi: firma?.ad || form.firma_adi || '',
+      kampanya_id: form.kampanya_id || null,
+    })
     setModal(false)
+  }
+
+  const handleDekontUpload = async (file) => {
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadDekont(file, 'finance')
+      setForm((prev) => ({
+        ...prev,
+        dekont_url: url,
+        dekont_dosya_adi: file.name,
+      }))
+    } finally {
+      setUploading(false)
+    }
   }
 
   const statusColor = { bekliyor: 'bg-amber-100 text-amber-700', onaylandi: 'bg-emerald-100 text-emerald-700', reddedildi: 'bg-red-100 text-red-600' }
@@ -194,6 +221,7 @@ export default function Finance({ mode = 'patron', embedded = false }) {
                 <th className="px-4 py-3">Kategori</th>
                 <th className="px-4 py-3">Tutar</th>
                 <th className="px-4 py-3">Giren</th>
+                <th className="px-4 py-3">Firma</th>
                 <th className="px-4 py-3">Durum</th>
                 <th className="px-4 py-3">İşlem</th>
               </tr>
@@ -206,6 +234,7 @@ export default function Finance({ mode = 'patron', embedded = false }) {
                   <td className="px-4 py-3">{FINANCE_CATEGORY_LABELS[f.kategori] || f.kategori}</td>
                   <td className="px-4 py-3 font-semibold">{formatCurrency(f.tutar)}</td>
                   <td className="px-4 py-3 text-slate-500">{getUserName(users, f.giren_id)}</td>
+                  <td className="px-4 py-3 text-slate-500">{f.firma_adi || companies.find((c) => c.id === f.firma_id)?.ad || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor[f.durum]}`}>{FINANCE_STATUS[f.durum] || f.durum}</span>
                     {f.onay_notu && <p className="text-xs text-slate-400 mt-1 max-w-[200px] truncate" title={f.onay_notu}>{f.onay_notu}</p>}
@@ -236,10 +265,35 @@ export default function Finance({ mode = 'patron', embedded = false }) {
             <option value="">—</option>
             {campaigns.map((c) => <option key={c.id} value={c.id}>{c.ad}</option>)}
           </Select>
+          <Select label="Firma" value={form.firma_id || ''} onChange={(e) => setForm({ ...form, firma_id: e.target.value })}>
+            <option value="">—</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.ad}</option>)}
+          </Select>
+          <Input label="Fatura No" value={form.fatura_no || ''} onChange={(e) => setForm({ ...form, fatura_no: e.target.value })} />
+          <Select label="Ödeme yöntemi" value={form.odeme_yontemi || 'havale'} onChange={(e) => setForm({ ...form, odeme_yontemi: e.target.value })}>
+            <option value="havale">Havale / EFT</option>
+            <option value="kart">Kredi kartı</option>
+            <option value="nakit">Nakit</option>
+            <option value="diger">Diğer</option>
+          </Select>
           <Select label="Durum" value={form.durum} onChange={(e) => setForm({ ...form, durum: e.target.value })}>
             {Object.entries(FINANCE_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
           <Textarea label="Açıklama" value={form.aciklama || ''} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} className="col-span-2" />
+          <div className="col-span-2">
+            <label className="block text-sm font-medium mb-1">Dekont / Fatura</label>
+            <div className="flex items-center gap-3">
+              <label className="cursor-pointer px-3 py-2 text-sm border rounded-lg hover:border-accent">
+                {uploading ? 'Yükleniyor...' : 'Dosya seç'}
+                <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => handleDekontUpload(e.target.files?.[0])} />
+              </label>
+              {form.dekont_url && (
+                <a href={form.dekont_url} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline">
+                  {form.dekont_dosya_adi || 'Dekont görüntüle'}
+                </a>
+              )}
+            </div>
+          </div>
         </div>
         <Button onClick={save} className="w-full mt-4">Kaydet</Button>
       </Modal>
