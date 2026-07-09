@@ -5,6 +5,7 @@ import { Input } from '../components/ui/Input'
 import { RoleBadge } from '../components/ui/Badge'
 import { PageHeader, Card } from '../components/ui/Page'
 import { isPatron } from '../lib/permissions'
+import { AI_MODELS } from '../lib/aiModels'
 
 const DEFAULT_GOALS = { calls: 50, demos: 10, tasks: 15, score: 70 }
 
@@ -72,9 +73,9 @@ export default function Settings() {
         {isPatron(currentUser) && (
           <>
             <Card className="p-5">
-              <h2 className="font-semibold mb-1">Müdür — OpenAI</h2>
-              <p className="text-xs text-slate-400 mb-4">ChatGPT API key sadece sunucu tarafında kullanılır (Edge Function). Patron dışında kimse görmez.</p>
-              <div className="space-y-3">
+              <h2 className="font-semibold mb-1">AI — OpenAI Ayarları</h2>
+              <p className="text-xs text-slate-400 mb-4">Tüm modüller (Müdür, Fikir Lab) aynı API key kullanır. Key sunucuda kalır.</p>
+              <div className="space-y-4">
                 <Input
                   label="OpenAI API Key"
                   type="password"
@@ -82,20 +83,52 @@ export default function Settings() {
                   onChange={(e) => updateSettings({ openaiApiKey: e.target.value.trim() })}
                   placeholder="sk-..."
                 />
-                <label className="block text-sm">
-                  <span className="text-slate-500 text-xs mb-1 block">Model</span>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Varsayılan model</label>
                   <select
-                    value={settings?.openaiModel || 'gpt-4o-mini'}
+                    value={settings?.openaiModel || 'gpt-5.1'}
                     onChange={(e) => updateSettings({ openaiModel: e.target.value })}
                     className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
                   >
-                    <option value="gpt-4o-mini">gpt-4o-mini (hızlı, ucuz)</option>
-                    <option value="gpt-4o">gpt-4o (en detaylı)</option>
-                    <option value="gpt-4-turbo">gpt-4-turbo</option>
+                    {AI_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
                   </select>
-                </label>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Müdür modeli (opsiyonel)</label>
+                  <select
+                    value={settings?.openaiModel_manager || ''}
+                    onChange={(e) => updateSettings({ openaiModel_manager: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+                  >
+                    <option value="">Varsayılanı kullan</option>
+                    {AI_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Pazarlama AI modeli (opsiyonel)</label>
+                  <select
+                    value={settings?.openaiModel_marketing || ''}
+                    onChange={(e) => updateSettings({ openaiModel_marketing: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+                  >
+                    <option value="">Varsayılanı kullan</option>
+                    {AI_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <Input
+                  label="Özel model adı (gpt-5.5 vb.)"
+                  value={settings?.openaiModelCustom || ''}
+                  onChange={(e) => updateSettings({ openaiModelCustom: e.target.value.trim() })}
+                  placeholder="Boş bırakın veya OpenAI'daki tam model adı"
+                />
                 <p className="text-xs text-slate-400">
-                  Key kaydedildikten sonra Edge Function deploy edilmeli: <code className="text-accent">supabase functions deploy manager-report</code>
+                  Edge Functions deploy: <code className="text-accent">manager-report</code> + <code className="text-accent">marketing-ai</code>
                 </p>
               </div>
             </Card>

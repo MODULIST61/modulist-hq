@@ -52,7 +52,10 @@ Deno.serve(async (req) => {
       })
     }
 
-    const model = ws?.settings?.openaiModel || 'gpt-4o-mini'
+    const model = ws?.settings?.openaiModel_manager?.trim()
+      || ws?.settings?.openaiModelCustom?.trim()
+      || ws?.settings?.openaiModel?.trim()
+      || 'gpt-5.1'
     const periodLabel = period === 'day' ? 'günlük' : 'haftalık'
 
     const userPrompt = `Aşağıdaki Modulist HQ ${periodLabel} verisini analiz et ve patron için detaylı müdür raporu yaz.

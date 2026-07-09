@@ -142,6 +142,35 @@ export const FINANCE_STATUS = {
   reddedildi: 'Reddedildi',
 }
 
+export const CONTENT_TYPES = {
+  reels: 'Reels',
+  story: 'Story',
+  carousel: 'Carousel',
+  post: 'Gönderi',
+  linkedin: 'LinkedIn',
+}
+
+export const CONTENT_PLATFORMS = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  youtube: 'YouTube Shorts',
+  linkedin: 'LinkedIn',
+}
+
+export const CONTENT_STATUS = ['fikir', 'senaryo', 'cekim', 'kurgu', 'yayinda', 'olculdu', 'arsiv']
+
+export const CONTENT_STATUS_LABELS = {
+  fikir: 'Fikir',
+  senaryo: 'Senaryo',
+  cekim: 'Çekim',
+  kurgu: 'Kurgu',
+  yayinda: 'Yayında',
+  olculdu: 'Ölçüldü',
+  arsiv: 'Arşiv',
+  cekildi: 'Çekildi',
+  kurgu_old: 'Kurgu',
+}
+
 export const NAV_ITEMS = [
   { path: '/', label: 'Bugün', icon: 'today', section: 'genel', permission: 'today' },
   { path: '/mesajlar', label: 'Mesajlar', icon: 'messages', section: 'genel', permission: 'messages' },

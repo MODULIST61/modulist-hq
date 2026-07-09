@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
+import { resolveModel, modelLabel } from '../lib/aiModels'
 import { buildManagerPayload } from '../lib/managerPayload'
 import { requestManagerReport } from '../lib/managerApi'
 import { downloadMarkdownPdf } from '../lib/pdfExport'
@@ -34,6 +35,7 @@ export default function Manager() {
   const [error, setError] = useState(null)
   const [report, setReport] = useState(data.settings?.lastManagerReport || null)
   const [copied, setCopied] = useState(false)
+  const modelName = modelLabel(resolveModel(data.settings, 'manager'))
 
   const generate = async () => {
     setLoading(true)
@@ -77,7 +79,7 @@ export default function Manager() {
         subtitle="Yapay zeka destekli patron raporu — kim ne yaptı, ne eksik, neye dikkat"
       />
 
-      <SectionCard title="Rapor Oluştur" subtitle="OpenAI API key Ayarlar'da tanımlı olmalı">
+      <SectionCard title="Rapor Oluştur" subtitle={`Model: ${modelName} · ChatGPT`}>
         <div className="space-y-4">
           <div className="flex gap-2 flex-wrap">
             {[
