@@ -3,63 +3,29 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { Button } from '../components/ui/Button'
-import { Input, Select, Textarea } from '../components/ui/Input'
-import { Modal } from '../components/ui/Modal'
-import { JobBadge, MessageTypeBadge } from '../components/ui/Badge'
-import { EmptyState } from '../components/ui/Modal'
+import { Input, Select } from '../components/ui/Input'
+import { Modal, EmptyState } from '../components/ui/Modal'
+import { JobBadge } from '../components/ui/Badge'
 import { getVisibleRooms, canWriteRoom, canDo, isPatron } from '../lib/permissions'
 import { getDmPartner } from '../lib/dm'
-import { relativeTime, truncate, getUserName, cn } from '../lib/utils'
-import { MESSAGE_TYPE_LABELS, TASK_PRIORITY_LABELS } from '../lib/constants'
-
-function MessageText({ text, users }) {
-  const parts = text.split(/(@\S+)/g)
-  return (
-    <span>
-      {parts.map((part, i) => {
-        const mention = users.find((u) => part === `@${u.name}`)
-        if (mention) return <span key={i} className="text-accent font-medium bg-blue-50 dark:bg-blue-900/30 px-0.5 rounded">{part}</span>
-        return <span key={i}>{part}</span>
-      })}
-    </span>
-  )
-}
-
-function MessageBubble({ message, users, onReply, onPin, onCreateTask, canWrite }) {
-  const sender = users.find((u) => u.id === message.user_id)
-  return (
-    <div className="group px-4 py-2 hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
-      <div className="flex gap-3">
-        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm shrink-0">
-          {sender?.name?.[0] || '?'}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{sender?.name}</span>
-            {sender && <JobBadge user={sender} />}
-            <MessageTypeBadge type={message.type} />
-            <span className="text-xs text-slate-400">{relativeTime(message.created_at)}</span>
-            {message.pinned && <span className="text-xs text-amber-500">📌</span>}
-          </div>
-          <p className="text-sm mt-1 text-slate-700 dark:text-slate-200 whitespace-pre-wrap"><MessageText text={message.text} users={users} /></p>
-          {canWrite && (
-            <div className="mt-1 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              {onReply && <button onClick={() => onReply(message)} className="text-xs text-slate-500 hover:text-accent">Yanıtla</button>}
-              <button onClick={() => onPin(message)} className="text-xs text-slate-500 hover:text-accent">{message.pinned ? 'Pin kaldır' : 'Pinle'}</button>
-              <button onClick={() => onCreateTask(message)} className="text-xs text-slate-500 hover:text-accent">Görev oluştur</button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+import { truncate } from '../lib/utils'
+import {
+  groupRoomsByHub,
+  groupMessagesByDay,
+  markRoomRead,
+} from '../lib/messaging'
+import { RoomSidebar } from '../components/messages/RoomSidebar'
+import { ChatHeader, PinnedBar } from '../components/messages/ChatHeader'
+import { ChatBubble } from '../components/messages/ChatBubble'
+import { ChatComposer } from '../components/messages/ChatComposer'
+import { BroadcastModal, LinkRecordModal } from '../components/messages/BroadcastModal'
 
 export default function Messages() {
   const { currentUser, users } = useAuth()
   const {
     rooms, messages, companies, bugs, dmThreads,
-    addMessage, updateMessage, addTask, broadcastPatron, getOrCreateDmThread, sendDm, clearRoomMessages,
+    addMessage, updateMessage, deleteMessage, addTask,
+    broadcastPatron, getOrCreateDmThread, sendDm, clearRoomMessages,
   } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -68,75 +34,138 @@ export default function Messages() {
   const activeDm = searchParams.get('dm')
 
   const visibleRooms = getVisibleRooms(currentUser, rooms)
+  const groupedRooms = useMemo(() => groupRoomsByHub(visibleRooms), [visibleRooms])
   const activeRoom = visibleRooms.find((r) => r.slug === activeSlug) || (panel === 'oda' ? visibleRooms[0] : null)
   const activeThread = dmThreads.find((t) => t.id === activeDm)
   const dmPartner = activeThread ? users.find((u) => u.id === getDmPartner(activeThread, currentUser.id)) : null
 
-  const myDmThreads = useMemo(() => {
-    return dmThreads
+  const myDmThreads = useMemo(() => (
+    dmThreads
       .filter((t) => t.participants.includes(currentUser.id))
       .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at))
-  }, [dmThreads, currentUser.id])
+  ), [dmThreads, currentUser.id])
 
-  const canWriteRoomNow = activeRoom ? canWriteRoom(currentUser, activeRoom.slug) : false
   const isDmMode = panel === 'dm' && activeThread
+  const canWriteRoomNow = activeRoom ? canWriteRoom(currentUser, activeRoom.slug) : false
+  const activeUsers = users.filter((u) => u.status === 'aktif')
 
   const [text, setText] = useState('')
   const [msgType, setMsgType] = useState('normal')
   const [replyTo, setReplyTo] = useState(null)
-  const [attachments, setAttachments] = useState([])
-  const [mentionQuery, setMentionQuery] = useState(null)
+  const [linkRecord, setLinkRecord] = useState(null)
   const [taskModal, setTaskModal] = useState(null)
   const [taskForm, setTaskForm] = useState({})
-  const [broadcastModal, setBroadcastModal] = useState(false)
-  const [clearing, setClearing] = useState(false)
-  const [newDmModal, setNewDmModal] = useState(false)
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [broadcastForm, setBroadcastForm] = useState({ text: '', type: 'duyuru', toAllRooms: true, toGenel: true })
-  const fileRef = useRef(null)
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [newDmModal, setNewDmModal] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [roomSearch, setRoomSearch] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
+  const [pinsExpanded, setPinsExpanded] = useState(false)
+  const [expandedThreads, setExpandedThreads] = useState(new Set())
+  const [mobileChat, setMobileChat] = useState(false)
+  const [dmSearch, setDmSearch] = useState('')
   const bottomRef = useRef(null)
 
-  const displayMessages = useMemo(() => {
-    if (isDmMode) {
-      return messages.filter((m) => m.is_dm && m.room_id === activeThread.id && !m.reply_to_id)
-    }
+  const roomId = isDmMode ? activeThread?.id : activeRoom?.id
+
+  useEffect(() => {
+    if (roomId && currentUser?.id) markRoomRead(currentUser.id, roomId)
+  }, [roomId, currentUser?.id, messages.length])
+
+  const allRoomMessages = useMemo(() => {
+    if (isDmMode) return messages.filter((m) => m.is_dm && m.room_id === activeThread.id)
     if (!activeRoom) return []
-    return messages.filter((m) => m.room_id === activeRoom.id && !m.is_dm && !m.reply_to_id)
+    return messages.filter((m) => m.room_id === activeRoom.id && !m.is_dm)
   }, [messages, activeRoom, activeThread, isDmMode])
 
+  const displayMessages = useMemo(() => {
+    const tops = allRoomMessages.filter((m) => !m.reply_to_id)
+    if (!roomSearch.trim()) return tops
+    const q = roomSearch.toLowerCase()
+    return tops.filter((m) => {
+      const sender = users.find((u) => u.id === m.user_id)?.name?.toLowerCase() || ''
+      return m.text.toLowerCase().includes(q) || sender.includes(q)
+    })
+  }, [allRoomMessages, roomSearch, users])
+
   const pinnedMessages = useMemo(() => {
-    if (!activeRoom || isDmMode) return []
-    return messages.filter((m) => m.room_id === activeRoom.id && m.pinned && !m.is_dm).slice(0, 3)
+    if (isDmMode || !activeRoom) return []
+    return messages.filter((m) => m.room_id === activeRoom.id && m.pinned && !m.is_dm)
   }, [messages, activeRoom, isDmMode])
 
-  const replies = (parentId) =>
-    messages.filter((m) => m.reply_to_id === parentId).sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  const replyMap = useMemo(() => {
+    const map = {}
+    allRoomMessages.filter((m) => m.reply_to_id).forEach((m) => {
+      const root = m.reply_to_id
+      if (!map[root]) map[root] = []
+      map[root].push(m)
+    })
+    Object.values(map).forEach((arr) => arr.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)))
+    return map
+  }, [allRoomMessages])
+
+  const grouped = useMemo(() => groupMessagesByDay(displayMessages), [displayMessages])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [displayMessages.length, activeRoom?.id, activeThread?.id])
+  }, [displayMessages.length, roomId, expandedThreads.size])
 
-  const activeUsers = users.filter((u) => u.status === 'aktif')
+  const mentionQuery = useMemo(() => {
+    const m = text.match(/@(\S*)$/)
+    return m ? m[1] : null
+  }, [text])
+
+  const hashQuery = useMemo(() => {
+    const m = text.match(/#(\S*)$/)
+    return m ? m[1] : null
+  }, [text])
+
+  const mentionUsers = activeUsers.filter(
+    (u) => u.id !== currentUser.id && (!mentionQuery || u.name.toLowerCase().includes(mentionQuery.toLowerCase())),
+  )
+
+  const hashSuggestions = useMemo(() => {
+    if (hashQuery === null) return []
+    const q = hashQuery.toLowerCase()
+    const items = []
+    companies.filter((c) => c.ad?.toLowerCase().includes(q)).slice(0, 5).forEach((c) => {
+      items.push({ id: c.id, label: c.ad, type: 'firma' })
+    })
+    bugs.filter((b) => b.baslik?.toLowerCase().includes(q)).slice(0, 3).forEach((b) => {
+      items.push({ id: b.id, label: b.baslik, type: 'bug' })
+    })
+    return items
+  }, [hashQuery, companies, bugs])
 
   const handleSend = async () => {
     if (!text.trim()) return
     const payload = text.trim()
     try {
+      const base = {
+        text: payload,
+        type: msgType,
+        linked_record_type: linkRecord?.type || null,
+        linked_record_id: linkRecord?.id || null,
+      }
       if (isDmMode) {
         await sendDm(activeThread.id, payload, activeUsers)
       } else if (canWriteRoomNow && activeRoom) {
         await addMessage({
+          ...base,
           room_id: activeRoom.id,
           user_id: currentUser.id,
-          text: payload,
-          type: msgType,
           reply_to_id: replyTo?.id || null,
-          attachments,
           is_dm: false,
         }, activeUsers)
+        if (replyTo?.id) {
+          setExpandedThreads((prev) => new Set(prev).add(replyTo.id))
+        }
       } else return
       setText('')
       setReplyTo(null)
-      setAttachments([])
+      setLinkRecord(null)
       setMsgType('normal')
     } catch (e) {
       alert(e.message || 'Mesaj gönderilemedi.')
@@ -145,18 +174,15 @@ export default function Messages() {
 
   const handleClearRoom = async () => {
     if (!activeRoom || isDmMode || !isPatron(currentUser)) return
-    const count = messages.filter((m) => m.room_id === activeRoom.id && !m.is_dm).length
-    if (!count) {
-      alert('Bu odada silinecek mesaj yok.')
-      return
-    }
+    const count = allRoomMessages.length
+    if (!count) return alert('Bu odada silinecek mesaj yok.')
     const label = activeRoom.slug === 'genel' ? 'Genel oda' : `#${activeRoom.name}`
-    if (!confirm(`${label} — ${count} mesaj kalıcı silinsin mi?\n\nBu işlem geri alınamaz.`)) return
+    if (!confirm(`${label} — ${count} mesaj silinsin mi?`)) return
     setClearing(true)
     try {
       await clearRoomMessages(activeRoom.id)
     } catch (e) {
-      alert(e.message || 'Mesajlar temizlenemedi.')
+      alert(e.message || 'Temizlenemedi.')
     } finally {
       setClearing(false)
     }
@@ -167,20 +193,10 @@ export default function Messages() {
     try {
       const count = await broadcastPatron(broadcastForm, activeUsers)
       alert(`${count} mesaj gönderildi.`)
-      setBroadcastModal(false)
+      setBroadcastOpen(false)
       setBroadcastForm({ text: '', type: 'duyuru', toAllRooms: true, toGenel: true })
     } catch (e) {
       alert(e.message || 'Duyuru gönderilemedi.')
-    }
-  }
-
-  const startDm = async (userId) => {
-    try {
-      const thread = await getOrCreateDmThread(userId)
-      setSearchParams({ panel: 'dm', dm: thread.id })
-      setNewDmModal(false)
-    } catch (e) {
-      alert(e.message || 'Direkt mesaj başlatılamadı.')
     }
   }
 
@@ -193,170 +209,258 @@ export default function Messages() {
     }
   }
 
+  const handleDelete = async (msg) => {
+    if (!isPatron(currentUser) && msg.user_id !== currentUser.id) return
+    if (!confirm('Mesaj silinsin mi?')) return
+    try {
+      await deleteMessage(msg.id)
+    } catch (e) {
+      alert(e.message || 'Silinemedi.')
+    }
+  }
+
+  const handleCopy = (t) => {
+    navigator.clipboard?.writeText(t)
+  }
+
   const openTaskModal = (msg) => {
-    setTaskForm({ baslik: truncate(msg.text, 60), aciklama: msg.text, room_id: msg.room_id, sorumlu_id: currentUser.id, oncelik: 'normal', bitis_tarihi: '' })
+    setTaskForm({
+      baslik: truncate(msg.text, 60),
+      aciklama: msg.text,
+      room_id: msg.room_id,
+      sorumlu_id: currentUser.id,
+      oncelik: 'normal',
+      bitis_tarihi: '',
+    })
     setTaskModal(msg)
   }
 
-  const mentionUsers = activeUsers.filter(
-    (u) => u.id !== currentUser.id && (!mentionQuery || u.name.toLowerCase().includes(mentionQuery.toLowerCase()))
-  )
+  const toggleThread = (id) => {
+    setExpandedThreads((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectRoom = (room) => {
+    setSearchParams({ panel: 'oda', oda: room.slug })
+    setMobileChat(true)
+    setRoomSearch('')
+    setExpandedThreads(new Set())
+  }
+
+  const selectDm = (id) => {
+    setSearchParams({ panel: 'dm', dm: id })
+    setMobileChat(true)
+  }
+
+  const setPanel = (p) => {
+    if (p === 'oda') setSearchParams({ panel: 'oda', oda: activeRoom?.slug || visibleRooms[0]?.slug })
+    else setSearchParams({ panel: 'dm' })
+  }
+
+  const startDm = async (userId) => {
+    try {
+      const thread = await getOrCreateDmThread(userId)
+      selectDm(thread.id)
+      setNewDmModal(false)
+    } catch (e) {
+      alert(e.message || 'DM başlatılamadı.')
+    }
+  }
+
+  const pickMention = (name) => {
+    setText(`${text.replace(/@\S*$/, '')}@${name} `)
+  }
+
+  const pickHash = (item) => {
+    setText(`${text.replace(/#\S*$/, '')}#${item.label} `)
+    setLinkRecord({ type: item.type || (item.sub === 'firma' ? 'firma' : 'bug'), id: item.id, label: item.label })
+  }
+
+  const handleTextChange = (val) => {
+    setText(val)
+  }
+
+  const todayCount = allRoomMessages.filter((m) => {
+    const d = new Date(m.created_at)
+    const t = new Date()
+    return d.toDateString() === t.toDateString()
+  }).length
+
+  const headerTitle = isDmMode ? dmPartner?.name : `#${activeRoom?.name || 'Mesajlar'}`
+  const headerSub = isDmMode
+    ? 'Direkt mesaj'
+    : `${activeRoom?.description || ''}${todayCount ? ` · ${todayCount} mesaj bugün` : ''}${!canWriteRoomNow && activeRoom ? ' · Salt okuma' : ''}`
+
+  const showSidebar = !mobileChat
+  const showMain = mobileChat || typeof window === 'undefined' || window.innerWidth >= 768
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] -m-4 md:-m-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-      {/* Sol panel */}
-      <div className="w-full md:w-72 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 hidden sm:flex">
-        <div className="flex border-b">
-          <button onClick={() => setSearchParams({ panel: 'oda', oda: activeRoom?.slug || visibleRooms[0]?.slug })} className={cn('flex-1 py-2.5 text-xs font-semibold', panel === 'oda' ? 'text-accent border-b-2 border-accent' : 'text-slate-500')}>Odalar</button>
-          <button onClick={() => setSearchParams({ panel: 'dm' })} className={cn('flex-1 py-2.5 text-xs font-semibold', panel === 'dm' ? 'text-accent border-b-2 border-accent' : 'text-slate-500')}>Direkt</button>
-        </div>
-
-        {panel === 'oda' ? (
-          <div className="flex-1 overflow-y-auto">
-            {visibleRooms.map((room) => {
-              const last = messages.filter((m) => m.room_id === room.id && !m.is_dm).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
-              return (
-                <button
-                  key={room.id}
-                  onClick={() => setSearchParams({ panel: 'oda', oda: room.slug })}
-                  className={cn('w-full text-left px-4 py-3 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50', activeRoom?.id === room.id && 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-accent')}
-                >
-                  <span className="font-medium text-sm">#{room.name}</span>
-                  {last && <p className="text-xs text-slate-400 mt-0.5 truncate">{truncate(last.text, 40)}</p>}
-                </button>
-              )
-            })}
-          </div>
-        ) : (
-          <>
-            <div className="p-2 border-b">
-              <Button size="sm" variant="outline" className="w-full" onClick={() => setNewDmModal(true)}>+ Yeni mesaj</Button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {myDmThreads.map((t) => {
-                const partner = users.find((u) => u.id === getDmPartner(t, currentUser.id))
-                const last = messages.filter((m) => m.room_id === t.id && m.is_dm).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setSearchParams({ panel: 'dm', dm: t.id })}
-                    className={cn('w-full text-left px-4 py-3 border-b hover:bg-slate-50 dark:hover:bg-slate-800/50', activeDm === t.id && 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-accent')}
-                  >
-                    <span className="font-medium text-sm">{partner?.name}</span>
-                    {last && <p className="text-xs text-slate-400 truncate">{truncate(last.text, 40)}</p>}
-                  </button>
-                )
-              })}
-              {!myDmThreads.length && <p className="text-xs text-slate-400 p-4 text-center">Henüz direkt mesaj yok</p>}
-            </div>
-          </>
-        )}
+    <div className="flex h-[calc(100dvh-7rem)] -m-4 md:-m-6 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-lg bg-[#e5ddd5] dark:bg-slate-950">
+      {/* Sidebar */}
+      <div className={cn('w-full md:w-80 lg:w-96 shrink-0 flex flex-col', !showSidebar && 'hidden md:flex')}>
+        <RoomSidebar
+          panel={panel}
+          setPanel={setPanel}
+          groupedRooms={groupedRooms}
+          activeRoom={activeRoom}
+          myDmThreads={myDmThreads}
+          activeDm={activeDm}
+          messages={messages}
+          currentUserId={currentUser.id}
+          users={users}
+          getDmPartner={getDmPartner}
+          onSelectRoom={selectRoom}
+          onSelectDm={selectDm}
+          onNewDm={() => setNewDmModal(true)}
+          dmSearch={dmSearch}
+          setDmSearch={setDmSearch}
+        />
       </div>
 
-      {/* Ana panel */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="px-4 py-3 border-b flex items-center justify-between gap-2">
-          <div>
-            <h2 className="font-semibold text-primary dark:text-white">
-              {isDmMode ? dmPartner?.name : `#${activeRoom?.name || 'Mesajlar'}`}
-            </h2>
-            <p className="text-xs text-slate-500">
-              {isDmMode ? 'Direkt mesaj' : `${activeRoom?.description || ''}${!canWriteRoomNow && activeRoom ? ' · Salt okuma' : ''}`}
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap justify-end">
-            {isPatron(currentUser) && panel === 'oda' && activeRoom && !isDmMode && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-red-600 border-red-200 hover:bg-red-50"
-                onClick={handleClearRoom}
-                disabled={clearing}
-              >
-                {clearing ? 'Temizleniyor...' : activeRoom.slug === 'genel' ? 'Geneli Temizle' : 'Odayı Temizle'}
-              </Button>
-            )}
-            {canDo(currentUser, 'patronBroadcast') && panel === 'oda' && (
-              <Button size="sm" variant="accent" onClick={() => setBroadcastModal(true)}>Patron Duyuru</Button>
-            )}
-          </div>
-        </div>
+      {/* Chat */}
+      <div className={cn('flex-1 flex flex-col min-w-0', !showMain && 'hidden md:flex')}>
+        <ChatHeader
+          title={headerTitle}
+          subtitle={headerSub}
+          showBack={mobileChat}
+          onBack={() => setMobileChat(false)}
+          roomSearch={roomSearch}
+          setRoomSearch={setRoomSearch}
+          showSearch={showSearch}
+          setShowSearch={setShowSearch}
+          pinnedCount={pinnedMessages.length}
+          onShowPins={() => setPinsExpanded(!pinsExpanded)}
+          onClear={handleClearRoom}
+          clearing={clearing}
+          clearLabel={activeRoom?.slug === 'genel' ? 'Geneli Temizle' : 'Odayı Temizle'}
+          onBroadcast={() => setBroadcastOpen(true)}
+          canBroadcast={canDo(currentUser, 'patronBroadcast') && panel === 'oda'}
+          canClear={isPatron(currentUser) && panel === 'oda' && activeRoom && !isDmMode}
+        />
 
-        {pinnedMessages.length > 0 && (
-          <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b text-xs space-y-1">
-            <span className="font-medium text-amber-700">📌 Sabitlenmiş</span>
-            {pinnedMessages.map((m) => <div key={m.id} className="truncate">{truncate(m.text, 100)}</div>)}
-          </div>
-        )}
+        <PinnedBar
+          pins={pinnedMessages}
+          onUnpin={handlePin}
+          expanded={pinsExpanded}
+          onToggle={() => setPinsExpanded(!pinsExpanded)}
+        />
 
-        <div className="flex-1 overflow-y-auto">
+        <div
+          className="flex-1 overflow-y-auto px-1 py-2"
+          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%239C92AC\' fill-opacity=\'0.06\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}
+        >
           {!activeRoom && !isDmMode ? (
-            <EmptyState icon="💬" title="Konuşma seçin" description="Sol panelden oda veya direkt mesaj seçin." />
+            <EmptyState icon="💬" title="Konuşma seçin" description="Sol panelden oda veya DM seçin." />
           ) : displayMessages.length === 0 ? (
-            <EmptyState icon="💬" title="Henüz mesaj yok" description="İlk mesajı gönderin." />
+            <EmptyState icon="💬" title={roomSearch ? 'Sonuç yok' : 'Henüz mesaj yok'} description={roomSearch ? 'Farklı kelime dene.' : 'İlk mesajı sen gönder.'} />
           ) : (
-            displayMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map((msg) => (
-              <div key={msg.id}>
-                <MessageBubble message={msg} users={users} onReply={isDmMode ? null : setReplyTo} onPin={handlePin} onCreateTask={openTaskModal} canWrite={isDmMode || canWriteRoomNow} />
-                {!isDmMode && replies(msg.id).map((r) => (
-                  <div key={r.id} className="ml-12 border-l-2 border-slate-100 dark:border-slate-800">
-                    <MessageBubble message={r} users={users} onPin={handlePin} onCreateTask={openTaskModal} canWrite={canWriteRoomNow} />
+            grouped.map((item) => {
+              if (item.type === 'day') {
+                return (
+                  <div key={item.key} className="flex justify-center my-3">
+                    <span className="text-[11px] font-medium px-3 py-1 rounded-lg bg-white/90 dark:bg-slate-800/90 text-slate-600 shadow-sm">
+                      {item.label}
+                    </span>
                   </div>
-                ))}
-              </div>
-            ))
+                )
+              }
+              const msg = item.msg
+              const replies = replyMap[msg.id] || []
+              const threadOpen = expandedThreads.has(msg.id)
+              return (
+                <div key={item.key}>
+                  <ChatBubble
+                    message={msg}
+                    users={users}
+                    currentUserId={currentUser.id}
+                    companies={companies}
+                    bugs={bugs}
+                    isDm={isDmMode}
+                    onReply={!isDmMode && canWriteRoomNow ? setReplyTo : null}
+                    onPin={handlePin}
+                    onCreateTask={openTaskModal}
+                    onDelete={(isPatron(currentUser) || msg.user_id === currentUser.id) ? handleDelete : null}
+                    onCopy={handleCopy}
+                    onToggleThread={replies.length ? toggleThread : null}
+                    replyCount={replies.length}
+                    threadExpanded={threadOpen}
+                  />
+                  {threadOpen && replies.map((r) => (
+                    <div key={r.id} className="ml-8 md:ml-14 pl-3 border-l-2 border-accent/30">
+                      <ChatBubble
+                        message={r}
+                        users={users}
+                        currentUserId={currentUser.id}
+                        companies={companies}
+                        bugs={bugs}
+                        isDm={isDmMode}
+                        compact
+                        showAvatar={false}
+                        onPin={handlePin}
+                        onCreateTask={openTaskModal}
+                        onDelete={(isPatron(currentUser) || r.user_id === currentUser.id) ? handleDelete : null}
+                        onCopy={handleCopy}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            })
           )}
           <div ref={bottomRef} />
         </div>
 
         {(isDmMode || canWriteRoomNow) ? (
-          <div className="border-t p-4 space-y-2">
-            {!isDmMode && (
-              <Select value={msgType} onChange={(e) => setMsgType(e.target.value)} className="w-32">
-                {Object.entries(MESSAGE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </Select>
-            )}
-            <div className="relative">
-              <Textarea value={text} onChange={(e) => { setText(e.target.value); const m = e.target.value.match(/@(\S*)$/); setMentionQuery(m ? m[1] : null) }} placeholder={isDmMode ? 'Direkt mesaj yazın...' : 'Mesaj yazın... @mention'} className="min-h-[60px]" onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} />
-              {mentionQuery !== null && mentionUsers.length > 0 && (
-                <div className="absolute bottom-full left-0 mb-1 w-48 bg-white dark:bg-slate-800 border rounded-lg shadow-lg z-10 max-h-32 overflow-y-auto">
-                  {mentionUsers.map((u) => (
-                    <button key={u.id} onClick={() => { setText(`${text.replace(/@\S*$/, '')}@${u.name} `); setMentionQuery(null) }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">{u.name}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={handleSend} disabled={!text.trim()}>Gönder</Button>
-            </div>
-          </div>
-        ) : activeRoom && (
-          <div className="border-t p-4 text-center text-sm text-slate-500 bg-slate-50 dark:bg-slate-800/50">Salt okuma — mesaj yazamazsınız</div>
-        )}
+          <ChatComposer
+            text={text}
+            setText={handleTextChange}
+            msgType={msgType}
+            setMsgType={setMsgType}
+            replyTo={replyTo}
+            clearReply={() => setReplyTo(null)}
+            linkRecord={linkRecord}
+            clearLink={() => setLinkRecord(null)}
+            onSend={handleSend}
+            disabled={false}
+            isDm={isDmMode}
+            mentionUsers={mentionUsers}
+            mentionQuery={mentionQuery}
+            onPickMention={pickMention}
+            hashSuggestions={hashQuery !== null ? hashSuggestions : []}
+            onPickHash={pickHash}
+            onLinkPicker={() => setLinkModalOpen(true)}
+          />
+        ) : activeRoom ? (
+          <div className="border-t p-4 text-center text-sm text-slate-500 bg-[#f0f2f5]">Salt okuma</div>
+        ) : null}
       </div>
 
-      {/* Patron broadcast */}
-      <Modal open={broadcastModal} onClose={() => setBroadcastModal(false)} title="Patron Duyuru" size="lg">
-        <p className="text-sm text-slate-500 mb-4">Kurumsal duyuru — her odaya ayrı mesaj ve/veya genel oda duyurusu.</p>
-        <div className="space-y-4">
-          <Textarea label="Mesaj" value={broadcastForm.text} onChange={(e) => setBroadcastForm({ ...broadcastForm, text: e.target.value })} />
-          <Select label="Tip" value={broadcastForm.type} onChange={(e) => setBroadcastForm({ ...broadcastForm, type: e.target.value })}>
-            <option value="duyuru">Duyuru</option>
-            <option value="karar">Karar</option>
-            <option value="normal">Normal</option>
-          </Select>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={broadcastForm.toAllRooms} onChange={(e) => setBroadcastForm({ ...broadcastForm, toAllRooms: e.target.checked })} />Tüm odalara ayrı mesaj gönder</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={broadcastForm.toGenel} onChange={(e) => setBroadcastForm({ ...broadcastForm, toGenel: e.target.checked })} />Genel oda + tüm ekibe @mention (sabitlenir)</label>
-          <Button onClick={handleBroadcast} className="w-full" disabled={!broadcastForm.text.trim()}>Gönder</Button>
-        </div>
-      </Modal>
+      <BroadcastModal
+        open={broadcastOpen}
+        onClose={() => setBroadcastOpen(false)}
+        form={broadcastForm}
+        setForm={setBroadcastForm}
+        onSend={handleBroadcast}
+        rooms={visibleRooms}
+      />
 
-      {/* Yeni DM */}
-      <Modal open={newDmModal} onClose={() => setNewDmModal(false)} title="Direkt Mesaj Başlat">
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+      <LinkRecordModal
+        open={linkModalOpen}
+        onClose={() => setLinkModalOpen(false)}
+        companies={companies}
+        bugs={bugs}
+        onSelect={(rec) => { setLinkRecord(rec); setLinkModalOpen(false) }}
+      />
+
+      <Modal open={newDmModal} onClose={() => setNewDmModal(false)} title="Direkt Mesaj">
+        <div className="space-y-1 max-h-64 overflow-y-auto">
           {activeUsers.filter((u) => u.id !== currentUser.id).map((u) => (
-            <button key={u.id} onClick={() => startDm(u.id)} className="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-3">
-              <span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold">{u.name[0]}</span>
+            <button key={u.id} type="button" onClick={() => startDm(u.id)} className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-50 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold">{u.name[0]}</span>
               <span className="font-medium text-sm">{u.name}</span>
               <JobBadge user={u} />
             </button>
@@ -370,9 +474,15 @@ export default function Messages() {
           <Select label="Sorumlu" value={taskForm.sorumlu_id || ''} onChange={(e) => setTaskForm({ ...taskForm, sorumlu_id: e.target.value })}>
             {activeUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </Select>
-          <Button onClick={() => { if (taskForm.baslik) { addTask({ ...taskForm, olusturan_id: currentUser.id }); setTaskModal(null) } }} className="w-full">Oluştur</Button>
+          <Button onClick={() => { if (taskForm.baslik) { addTask({ ...taskForm, olusturan_id: currentUser.id }); setTaskModal(null) } }} className="w-full">
+            Oluştur
+          </Button>
         </div>
       </Modal>
     </div>
   )
+}
+
+function cn(...parts) {
+  return parts.filter(Boolean).join(' ')
 }
