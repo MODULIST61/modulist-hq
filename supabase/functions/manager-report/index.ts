@@ -17,6 +17,27 @@ Görevin:
 
 Format: Markdown (## başlıklar, - madde listeleri). Emoji kullanabilirsin ama abartma.`
 
+function usesMaxCompletionTokens(model: string) {
+  return /gpt-5|^o[134]/i.test(model)
+}
+
+function usesReasoningParams(model: string) {
+  return /^o[134]/i.test(model)
+}
+
+function buildChatBody(
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  temperature: number,
+  limit: number,
+) {
+  const body: Record<string, unknown> = { model, messages }
+  if (!usesReasoningParams(model)) body.temperature = temperature
+  if (usesMaxCompletionTokens(model)) body.max_completion_tokens = limit
+  else body.max_tokens = limit
+  return body
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -75,15 +96,10 @@ Rapor başlığı: "# Modulist HQ Müdür Raporu"`
         Authorization: `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.4,
-        max_tokens: 4000,
-      }),
+      body: JSON.stringify(buildChatBody(model, [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ], 0.4, 4000)),
     })
 
     const openaiData = await openaiRes.json()

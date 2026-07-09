@@ -15,6 +15,27 @@ function resolveModel(settings: Record<string, unknown>, module = 'marketing') {
   return 'gpt-5.1'
 }
 
+function usesMaxCompletionTokens(model: string) {
+  return /gpt-5|^o[134]/i.test(model)
+}
+
+function usesReasoningParams(model: string) {
+  return /^o[134]/i.test(model)
+}
+
+function buildChatBody(
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  temperature: number,
+  limit: number,
+) {
+  const body: Record<string, unknown> = { model, messages }
+  if (!usesReasoningParams(model)) body.temperature = temperature
+  if (usesMaxCompletionTokens(model)) body.max_completion_tokens = limit
+  else body.max_tokens = limit
+  return body
+}
+
 async function callOpenAI(apiKey: string, model: string, system: string, user: string) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -22,15 +43,10 @@ async function callOpenAI(apiKey: string, model: string, system: string, user: s
       Authorization: `Bearer ${apiKey.trim()}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: 0.7,
-      max_tokens: 4500,
-    }),
+    body: JSON.stringify(buildChatBody(model, [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ], 0.7, 4500)),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data?.error?.message || `OpenAI hatası (${res.status})`)
