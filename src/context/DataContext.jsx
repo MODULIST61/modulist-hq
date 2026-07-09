@@ -171,6 +171,25 @@ export function DataProvider({ children }) {
     }
   }, [setLocal, logAudit])
 
+  const clearRoomMessages = useCallback(async (roomId) => {
+    if (!isPatron(currentUser)) throw new Error('Sadece patron oda mesajlarını temizleyebilir')
+    const room = dataRef.current.rooms.find((r) => r.id === roomId)
+    const count = dataRef.current.messages.filter((m) => m.room_id === roomId && !m.is_dm).length
+    await api.removeRoomMessages(roomId)
+    setLocal((prev) => ({
+      ...prev,
+      messages: prev.messages.filter((m) => !(m.room_id === roomId && !m.is_dm)),
+    }))
+    logAudit(
+      'room_messages_clear',
+      `#${room?.name || roomId} odası temizlendi (${count} mesaj)`,
+      'room',
+      roomId,
+      { count },
+    )
+    return count
+  }, [currentUser, setLocal, logAudit])
+
   const broadcastPatron = useCallback(async ({ text, type, toAllRooms, toGenel }, users) => {
     const rooms = dataRef.current.rooms
     const msgs = []
@@ -508,6 +527,7 @@ export function DataProvider({ children }) {
         addMessage,
         updateMessage,
         deleteMessage,
+        clearRoomMessages,
         broadcastPatron,
         getOrCreateDmThread,
         sendDm,

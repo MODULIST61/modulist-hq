@@ -157,6 +157,15 @@ export async function removeMessage(id) {
   throwIfError(error)
 }
 
+export async function removeRoomMessages(roomId) {
+  const { error } = await supabase
+    .from('hq_messages')
+    .delete()
+    .eq('room_id', roomId)
+    .eq('is_dm', false)
+  throwIfError(error)
+}
+
 export async function insertNotification(notif) {
   const { data, error } = await supabase.from('hq_notifications').insert(notif).select().single()
   throwIfError(error)

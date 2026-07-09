@@ -59,7 +59,7 @@ export default function Messages() {
   const { currentUser, users } = useAuth()
   const {
     rooms, messages, companies, bugs, dmThreads,
-    addMessage, updateMessage, addTask, broadcastPatron, getOrCreateDmThread, sendDm,
+    addMessage, updateMessage, addTask, broadcastPatron, getOrCreateDmThread, sendDm, clearRoomMessages,
   } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -89,6 +89,7 @@ export default function Messages() {
   const [taskModal, setTaskModal] = useState(null)
   const [taskForm, setTaskForm] = useState({})
   const [broadcastModal, setBroadcastModal] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [newDmModal, setNewDmModal] = useState(false)
   const [broadcastForm, setBroadcastForm] = useState({ text: '', type: 'duyuru', toAllRooms: true, toGenel: true })
   const fileRef = useRef(null)
@@ -139,6 +140,25 @@ export default function Messages() {
       setMsgType('normal')
     } catch (e) {
       alert(e.message || 'Mesaj gönderilemedi.')
+    }
+  }
+
+  const handleClearRoom = async () => {
+    if (!activeRoom || isDmMode || !isPatron(currentUser)) return
+    const count = messages.filter((m) => m.room_id === activeRoom.id && !m.is_dm).length
+    if (!count) {
+      alert('Bu odada silinecek mesaj yok.')
+      return
+    }
+    const label = activeRoom.slug === 'genel' ? 'Genel oda' : `#${activeRoom.name}`
+    if (!confirm(`${label} — ${count} mesaj kalıcı silinsin mi?\n\nBu işlem geri alınamaz.`)) return
+    setClearing(true)
+    try {
+      await clearRoomMessages(activeRoom.id)
+    } catch (e) {
+      alert(e.message || 'Mesajlar temizlenemedi.')
+    } finally {
+      setClearing(false)
     }
   }
 
@@ -244,7 +264,18 @@ export default function Messages() {
               {isDmMode ? 'Direkt mesaj' : `${activeRoom?.description || ''}${!canWriteRoomNow && activeRoom ? ' · Salt okuma' : ''}`}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            {isPatron(currentUser) && panel === 'oda' && activeRoom && !isDmMode && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-600 border-red-200 hover:bg-red-50"
+                onClick={handleClearRoom}
+                disabled={clearing}
+              >
+                {clearing ? 'Temizleniyor...' : activeRoom.slug === 'genel' ? 'Geneli Temizle' : 'Odayı Temizle'}
+              </Button>
+            )}
             {canDo(currentUser, 'patronBroadcast') && panel === 'oda' && (
               <Button size="sm" variant="accent" onClick={() => setBroadcastModal(true)}>Patron Duyuru</Button>
             )}
