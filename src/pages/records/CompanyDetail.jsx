@@ -13,6 +13,7 @@ import { openBugsForCompany } from '../../lib/bugFlow'
 import { canAccessFinance } from '../../lib/permissions'
 import { INTERACTION_TYPES, INTERACTION_RESULTS, interactionIcon } from '../../lib/interactions'
 import { QuickLogModal } from '../../components/secretary/QuickLogModal'
+import { Company360Panel } from '../../components/patron/Company360Panel'
 
 const TIMELINE_ICONS = {
   mesaj: '💬',
@@ -166,6 +167,12 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
           </>
         }
       />
+
+      {patron && (
+        <div className="mb-6">
+          <Company360Panel companyId={id} data={{ companies, bugs, feedback, tasks, finance, interactions }} users={users} />
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 p-6">

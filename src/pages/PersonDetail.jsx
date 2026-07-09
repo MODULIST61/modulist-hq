@@ -19,7 +19,7 @@ const TABS = [
   { id: 'aktivite', label: 'Aktivite' },
 ]
 
-const TIMELINE_ICONS = { audit: '📋', mesaj: '💬', gorev: '✅', metrik: '📊' }
+const TIMELINE_ICONS = { audit: '📋', mesaj: '💬', gorev: '✅', metrik: '📊', iletisim: '📞' }
 
 export default function PersonDetail({ backPath = '/patron?tab=personel' }) {
   const { id } = useParams()
@@ -107,6 +107,8 @@ export default function PersonDetail({ backPath = '/patron?tab=personel' }) {
           { label: 'Firmalar', value: stats.companies },
           { label: 'Müşteri', value: stats.customers },
           { label: 'Bugün arama', value: stats.todayCalls },
+          { label: 'İletişim bugün', value: stats.todayInteractions || 0 },
+          { label: 'Inbox', value: stats.inboxItems || 0 },
           { label: 'Mesaj', value: stats.messages + stats.dmMessages },
         ].map((k) => (
           <Card key={k.label} className={cn('p-3 text-center', k.danger > 0 && 'border-danger/30')}>

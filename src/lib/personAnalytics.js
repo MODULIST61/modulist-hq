@@ -106,6 +106,7 @@ export function buildPersonProfile(userId, data, users) {
   const finance = data.finance.filter((f) => f.giren_id === userId)
   const bugs = data.bugs.filter((b) => b.sorumlu_id === userId || b.bildiren_id === userId)
   const feedback = data.feedback.filter((f) => f.sorumlu_id === userId || f.user_id === userId)
+  const userInteractions = (data.interactions || []).filter((i) => i.user_id === userId || i.sorumlu_id === userId)
   const audit = (data.auditLogs || []).filter((a) => a.user_id === userId)
   const activity = data.userActivity?.find((a) => a.user_id === userId)
   const comments = (data.taskComments || []).filter((c) => c.user_id === userId)
@@ -122,6 +123,12 @@ export function buildPersonProfile(userId, data, users) {
       date: m.tarih,
       text: `${m.arama_sayisi} arama, ${m.demo_ayarlanan} demo`,
       id: m.id,
+    })),
+    ...userInteractions.slice(-20).map((i) => ({
+      type: 'iletisim',
+      date: i.created_at,
+      text: `${i.tip} — ${i.ozet || i.konu || i.kisi_adi || 'İletişim'}`,
+      id: i.id,
     })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 40)
 
@@ -141,6 +148,8 @@ export function buildPersonProfile(userId, data, users) {
       financePending: finance.filter((f) => f.durum === 'bekliyor').length,
       todayCalls: todayMetric?.arama_sayisi || 0,
       todayDemos: todayMetric?.demo_ayarlanan || 0,
+      todayInteractions: userInteractions.filter((i) => i.created_at?.split('T')[0] === new Date().toISOString().split('T')[0]).length,
+      inboxItems: userInteractions.filter((i) => i.durum === 'inbox').length,
     },
     tasks: myTasks.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)),
     companies: companies.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)),
@@ -149,6 +158,7 @@ export function buildPersonProfile(userId, data, users) {
     finance,
     bugs,
     feedback,
+    interactions: userInteractions,
     comments,
     timeline,
     lastSeen: activity?.last_seen_at,

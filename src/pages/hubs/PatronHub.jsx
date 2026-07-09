@@ -4,6 +4,7 @@ import Finance from '../Finance'
 import Personnel from '../Personnel'
 import Manager from '../Manager'
 import AuditLog from '../AuditLog'
+import Decisions from '../Decisions'
 import WeeklyReport from '../WeeklyReport'
 import Performance from '../Performance'
 import Team from '../Team'
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'personel', label: 'Personeller', icon: '👥' },
   { id: 'mudur', label: 'Müdür AI', icon: '🤖' },
   { id: 'denetim', label: 'Denetim', icon: '📋' },
+  { id: 'kararlar', label: 'Kararlar', icon: '⚖️' },
   { id: 'haftalik', label: 'Haftalık Özet', icon: '📊' },
   { id: 'performans', label: 'Performans', icon: '📈' },
   { id: 'ekip', label: 'Ekip', icon: '⚙️' },
@@ -25,7 +27,7 @@ export default function PatronHub() {
   return (
     <HubLayout
       title="Patron Paneli"
-      subtitle="Komuta merkezi, finans onayı, ekip ve AI raporları"
+      subtitle="Komuta merkezi — nabız, ekip, firma 360° ve AI brifing"
       tabs={TABS}
       activeTab={tab}
       onTabChange={setTab}
@@ -35,6 +37,7 @@ export default function PatronHub() {
       {tab === 'personel' && <Personnel embedded />}
       {tab === 'mudur' && <Manager embedded />}
       {tab === 'denetim' && <AuditLog embedded />}
+      {tab === 'kararlar' && <Decisions embedded />}
       {tab === 'haftalik' && <WeeklyReport embedded />}
       {tab === 'performans' && <Performance embedded />}
       {tab === 'ekip' && <Team embedded />}

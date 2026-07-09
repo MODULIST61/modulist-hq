@@ -5,6 +5,8 @@ import { resolveModel, modelLabel } from '../lib/aiModels'
 import { buildManagerPayload } from '../lib/managerPayload'
 import { requestManagerReport } from '../lib/managerApi'
 import { downloadMarkdownPdf } from '../lib/pdfExport'
+import { MorningBriefing } from '../components/patron/MorningBriefing'
+import { PatronInsights } from '../components/patron/PatronInsights'
 import { SectionCard } from '../components/dashboard/DashboardWidgets'
 import { PageHeader } from '../components/ui/Page'
 import { Button } from '../components/ui/Button'
@@ -81,6 +83,10 @@ export default function Manager({ embedded = false }) {
         />
       )}
 
+      <MorningBriefing data={data} users={users} />
+
+      <PatronInsights data={data} users={users} />
+
       <SectionCard title="Rapor Oluştur" subtitle={`Model: ${modelName} · ChatGPT`}>
         <div className="space-y-4">
           <div className="flex gap-2 flex-wrap">
@@ -105,7 +111,7 @@ export default function Manager({ embedded = false }) {
           </div>
 
           <p className="text-xs text-slate-500">
-            ChatGPT tüm HQ verisini (ekip, görev, firma, finans, reklam, karar, audit) analiz eder ve patron diliyle rapor yazar.
+            ChatGPT tüm HQ verisini (ekip, görev, firma, finans, reklam, iletişim, karar, audit) analiz eder ve patron diliyle rapor yazar.
           </p>
 
           <Button onClick={generate} disabled={loading} className="w-full sm:w-auto">

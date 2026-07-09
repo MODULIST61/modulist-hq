@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { canDo } from '../lib/permissions'
 import { calculatePerformanceScores, getTeamAverage } from '../lib/performance'
+import { buildWeeklyPerformanceTrend } from '../lib/patronPulse'
 import { SectionCard, BarChart } from '../components/dashboard/DashboardWidgets'
 import { PageHeader, Card } from '../components/ui/Page'
 import { cn } from '../lib/utils'
@@ -50,6 +51,11 @@ export default function Performance({ embedded = false }) {
   const myScore = scores.find((s) => s.userId === currentUser?.id)
   const display = patron ? scores : scores.filter((s) => s.userId === currentUser?.id)
   const chartData = display.map((s) => ({ label: s.name.split(' ')[0], value: s.score }))
+  const weeklyTrend = useMemo(
+    () => (patron ? buildWeeklyPerformanceTrend(users, tasks, companies, dailyMetrics, 4) : []),
+    [patron, users, tasks, companies, dailyMetrics],
+  )
+  const trendChart = weeklyTrend.map((w) => ({ label: w.label, value: w.calls + w.demos * 3 + w.tasksDone * 2 }))
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -94,6 +100,22 @@ export default function Performance({ embedded = false }) {
           </div>
           {patron && <p className="text-xs text-slate-400 mt-3">Hedefleri Ayarlar sayfasından düzenleyebilirsiniz.</p>}
         </Card>
+      )}
+
+      {patron && weeklyTrend.length > 0 && (
+        <SectionCard title="4 Haftalık Trend" subtitle="Arama, demo, görev ve yeni müşteri">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {weeklyTrend.map((w) => (
+              <div key={w.label} className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                <div className="text-xs text-slate-500 mb-1">{w.label}</div>
+                <div className="text-sm"><span className="font-bold">{w.calls}</span> arama</div>
+                <div className="text-sm"><span className="font-bold">{w.demos}</span> demo</div>
+                <div className="text-xs text-emerald-600">{w.newCustomers} müşteri</div>
+              </div>
+            ))}
+          </div>
+          <BarChart data={trendChart} />
+        </SectionCard>
       )}
 
       {patron && chartData.length > 0 && (

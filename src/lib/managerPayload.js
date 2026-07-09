@@ -1,5 +1,7 @@
 import { formatCurrency, getUserName, isOverdue } from './utils'
 import { buildPersonWeeklyComparison } from './personAnalytics'
+import { buildTodayInteractionStats } from './patronPulse'
+import { inboxItems, followUpsToday } from './interactions'
 
 function periodRange(period) {
   const end = new Date()
@@ -39,12 +41,18 @@ export function buildManagerPayload(data, users, period = 'week') {
     const audit = (data.auditLogs || []).filter(
       (a) => a.user_id === u.id && inRange(a.created_at, start, end)
     ).slice(0, 15)
+    const interactions = (data.interactions || []).filter(
+      (i) => i.user_id === u.id && inRange(i.created_at, start, end)
+    )
+    const interactionCalls = interactions.filter((i) => ['telefon_giden', 'telefon_gelen'].includes(i.tip)).length
 
     return {
       name: u.name,
       role: u.job_title || u.role,
-      calls,
+      calls: Math.max(calls, interactionCalls),
       demos,
+      interactionsLogged: interactions.length,
+      inboxHandled: interactions.filter((i) => i.durum === 'tamamlandi').length,
       metricDaysLogged: metrics.length,
       openTasks: openTasks.length,
       overdueTasks: overdue.length,
@@ -91,6 +99,22 @@ export function buildManagerPayload(data, users, period = 'week') {
       due: t.bitis_tarihi,
     }))
 
+  const interactionStats = buildTodayInteractionStats(data.interactions || [])
+  const inboxOpen = inboxItems(data.interactions).length
+  const followUps = followUpsToday(data.interactions).length
+
+  const recentInteractions = (data.interactions || [])
+    .filter((i) => inRange(i.created_at, start, end))
+    .slice(0, 20)
+    .map((i) => ({
+      type: i.tip,
+      company: data.companies.find((c) => c.id === i.firma_id)?.ad,
+      person: i.kisi_adi,
+      result: i.sonuc,
+      by: getUserName(users, i.user_id),
+      at: i.created_at,
+    }))
+
   return {
     period: { label, start: start.toISOString(), end: end.toISOString() },
     team,
@@ -102,6 +126,16 @@ export function buildManagerPayload(data, users, period = 'week') {
       messageCount: data.messages.filter((m) => inRange(m.created_at, start, end) && !m.is_dm).length,
       openBugs: data.bugs.filter((b) => b.durum !== 'kapali').length,
       criticalBugs: data.bugs.filter((b) => b.oncelik === 'kritik' && b.durum !== 'kapali').length,
+      inboxOpen,
+      followUpsDue: followUps,
+      interactionsInPeriod: (data.interactions || []).filter((i) => inRange(i.created_at, start, end)).length,
+    },
+    interactions: {
+      todayCalls: interactionStats.calls,
+      todayDemos: interactionStats.demos,
+      inboxOpen,
+      followUpsDue: followUps,
+      recent: recentInteractions,
     },
     marketing: {
       campaigns: data.campaigns.map((c) => ({
