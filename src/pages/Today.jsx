@@ -84,6 +84,9 @@ export default function Today() {
         {patron && (
           <Button variant="outline" onClick={() => navigate('/mudur')}>Müdür AI →</Button>
         )}
+        {patron && (
+          <Button variant="outline" onClick={() => navigate('/denetim')}>Denetim →</Button>
+        )}
         </div>
       </div>
 
