@@ -174,6 +174,7 @@ export const CONTENT_STATUS_LABELS = {
 export const NAV_ITEMS = [
   { path: '/', label: 'Ana Sayfa', icon: 'today', section: 'ana', permission: 'today' },
   { path: '/mesajlar', label: 'Mesajlar', icon: 'messages', section: 'ana', permission: 'messages' },
+  { path: '/gorevlerim', label: 'Görevlerim', icon: 'tasks', section: 'ana', permission: 'myTasks' },
   { path: '/yazilim', label: 'Yazılım', icon: 'software', section: 'yazilim', permission: 'software' },
   { path: '/reklam', label: 'Reklam', icon: 'marketing', section: 'reklam', permission: 'marketing' },
   { path: '/sekreter', label: 'Sekreter', icon: 'secretary', section: 'sekreter', permission: 'secretary' },

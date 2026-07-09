@@ -102,10 +102,5 @@ export function LegacyFinanceRedirect() {
 }
 
 export function LegacyTasksRedirect() {
-  const { currentUser } = useAuth()
-  if (!currentUser) return <Navigate to="/giris" replace />
-  if (canAccessPage(currentUser, 'software')) return <Navigate to="/yazilim?tab=isler" replace />
-  if (canAccessPage(currentUser, 'secretary')) return <Navigate to="/sekreter?tab=isler" replace />
-  if (canAccessPage(currentUser, 'marketing')) return <Navigate to="/reklam" replace />
-  return <Navigate to="/" replace />
+  return <Navigate to="/gorevlerim" replace />
 }

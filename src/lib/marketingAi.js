@@ -23,6 +23,13 @@ export async function requestMarketingAi(action, params = {}) {
   })
 
   if (error) throw new Error(await parseInvokeError(error))
-  if (data?.error) throw new Error(data.error)
+  if (data?.error) {
+    if (data.error === 'Geçersiz action') {
+      throw new Error(
+        'Prompt Stüdyosu action\'ı sunucuda yok — Supabase\'de marketing-ai Edge Function\'ı güncel index.ts ile yeniden deploy edin (JWT verify: OFF).',
+      )
+    }
+    throw new Error(data.error)
+  }
   return data
 }

@@ -127,7 +127,11 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { action, params = {} } = body
     if (!action || !PROMPTS[action]) {
-      return new Response(JSON.stringify({ error: 'Geçersiz action' }), {
+      return new Response(JSON.stringify({
+        error: 'Geçersiz action',
+        action_received: action || null,
+        valid_actions: Object.keys(PROMPTS),
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

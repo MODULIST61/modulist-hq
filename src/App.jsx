@@ -20,6 +20,7 @@ import Setup from './pages/Setup'
 import Login from './pages/Login'
 import AccessDenied from './pages/AccessDenied'
 import Today from './pages/Today'
+import MyTasks from './pages/MyTasks'
 import Messages from './pages/Messages'
 import Marketing from './pages/Marketing'
 import CompanyDetail from './pages/records/CompanyDetail'
@@ -49,6 +50,7 @@ function AppRoutes() {
 
       <Route element={<RequireAuth><RequireSetup><MainLayout /></RequireSetup></RequireAuth>}>
         <Route index element={<PageGuard page="today"><Today /></PageGuard>} />
+        <Route path="gorevlerim" element={<PageGuard page="myTasks"><MyTasks /></PageGuard>} />
         <Route path="mesajlar" element={<PageGuard page="messages"><Messages /></PageGuard>} />
 
         <Route path="yazilim" element={<SoftwareHubGuard><YazilimHub /></SoftwareHubGuard>} />

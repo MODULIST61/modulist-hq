@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { canAccessPage, isPatron } from '../lib/permissions'
 import { buildRoomPulse } from '../lib/analytics'
 import { SectionCard } from '../components/dashboard/DashboardWidgets'
+import { AssignTaskModal } from '../components/tasks/AssignTaskModal'
+import { Button } from '../components/ui/Button'
 import { formatDate, isOverdue } from '../lib/utils'
 
 const HUB_CARDS = [
@@ -19,6 +21,7 @@ export default function Today() {
   const { currentUser, users } = useAuth()
   const navigate = useNavigate()
   const data = useData()
+  const [assignOpen, setAssignOpen] = useState(false)
 
   const myTasks = data.tasks.filter(
     (t) => t.sorumlu_id === currentUser?.id && !['tamamlandi', 'iptal'].includes(t.durum),
@@ -29,14 +32,20 @@ export default function Today() {
   )
 
   const visibleHubs = HUB_CARDS.filter((h) => canAccessPage(currentUser, h.key))
+  const patron = isPatron(currentUser)
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary dark:text-white">Ana Sayfa</h1>
-        <p className="text-sm text-slate-500">
-          Merhaba {currentUser?.name} — {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-primary dark:text-white">Ana Sayfa</h1>
+          <p className="text-sm text-slate-500">
+            Merhaba {currentUser?.name} — {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+        </div>
+        {patron && (
+          <Button onClick={() => setAssignOpen(true)}>+ Görev Oluştur</Button>
+        )}
       </div>
 
       {visibleHubs.length > 0 && (
@@ -57,15 +66,21 @@ export default function Today() {
       )}
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <SectionCard title="Bugünkü Görevlerim" subtitle={`${myTasks.length} açık görev`}>
+        <SectionCard
+          title="Bugünkü Görevlerim"
+          subtitle={`${myTasks.length} açık görev`}
+          action={<Button variant="ghost" size="sm" onClick={() => navigate('/gorevlerim')}>Görevlerim →</Button>}
+        >
           {myTasks.slice(0, 6).map((t) => (
-            <div
+            <button
               key={t.id}
-              className={`text-sm py-2 border-b dark:border-slate-800 flex justify-between ${isOverdue(t.bitis_tarihi) ? 'text-danger' : ''}`}
+              type="button"
+              onClick={() => navigate('/gorevlerim')}
+              className={`w-full text-left text-sm py-2 border-b dark:border-slate-800 flex justify-between hover:opacity-80 ${isOverdue(t.bitis_tarihi) ? 'text-red-600' : ''}`}
             >
               <span>{t.baslik}</span>
               <span className="text-slate-400">{formatDate(t.bitis_tarihi) || '—'}</span>
-            </div>
+            </button>
           ))}
           {!myTasks.length && <p className="text-sm text-slate-400">Açık görev yok</p>}
         </SectionCard>
@@ -80,8 +95,12 @@ export default function Today() {
         </SectionCard>
       </div>
 
-      {isPatron(currentUser) && (
-        <SectionCard title="Hızlı Erişim" subtitle="Patron kısayolları">
+      {patron && (
+        <SectionCard title="Patron — Görev & Kısayollar" subtitle="Ekibe görev ata veya hızlı geçiş yap">
+          <div className="flex flex-wrap gap-2 mb-3">
+            <Button variant="outline" onClick={() => setAssignOpen(true)}>📋 Görev Oluştur</Button>
+            <Button variant="outline" onClick={() => navigate('/gorevlerim')}>Görevlerim</Button>
+          </div>
           <div className="flex flex-wrap gap-2">
             {[
               ['/patron?tab=komuta', 'Komuta Merkezi'],
@@ -96,6 +115,8 @@ export default function Today() {
           </div>
         </SectionCard>
       )}
+
+      <AssignTaskModal open={assignOpen} onClose={() => setAssignOpen(false)} />
     </div>
   )
 }

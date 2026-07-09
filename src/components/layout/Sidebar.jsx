@@ -64,8 +64,11 @@ const icons = {
 
 export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { currentUser } = useAuth()
-  const { notifications } = useData()
+  const { notifications, tasks } = useData()
   const items = getVisibleNavItems(currentUser, NAV_ITEMS)
+  const openMyTasks = tasks.filter(
+    (t) => t.sorumlu_id === currentUser?.id && !['tamamlandi', 'iptal'].includes(t.durum),
+  ).length
   const unreadMentions = notifications.filter(
     (n) => n.user_id === currentUser?.id && !n.okundu && n.tip === 'mention'
   ).length
@@ -123,6 +126,9 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
                       <span className="flex-1">{item.label}</span>
                       {item.path === '/mesajlar' && unreadMentions > 0 && (
                         <span className="bg-accent text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">{unreadMentions}</span>
+                      )}
+                      {item.path === '/gorevlerim' && openMyTasks > 0 && (
+                        <span className="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">{openMyTasks}</span>
                       )}
                     </>
                   )}
