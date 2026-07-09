@@ -9,7 +9,7 @@ export function buildSearchIndex(data, users) {
       typeLabel: 'Firma',
       title: c.ad,
       subtitle: `${c.pipeline} · ${c.yetkili || ''}`,
-      path: `/kayitlar/firmalar/${c.id}`,
+      path: `/sekreter/firmalar/${c.id}`,
       icon: '🏢',
     })
   })
@@ -21,7 +21,7 @@ export function buildSearchIndex(data, users) {
       typeLabel: 'Görev',
       title: t.baslik,
       subtitle: `${t.durum} · ${getName(t.sorumlu_id)}`,
-      path: '/isler',
+      path: '/yazilim?tab=isler',
       icon: '✅',
     })
   })
@@ -33,7 +33,7 @@ export function buildSearchIndex(data, users) {
       typeLabel: 'Bug',
       title: b.baslik,
       subtitle: `${b.oncelik} · ${b.durum}`,
-      path: '/kayitlar/buglar',
+      path: '/yazilim?tab=buglar',
       icon: '🐛',
     })
   })
@@ -57,7 +57,7 @@ export function buildSearchIndex(data, users) {
       typeLabel: 'Geri Dönüş',
       title: f.metin?.slice(0, 60),
       subtitle: f.tip,
-      path: '/kayitlar/geri-donusler',
+      path: '/yazilim?tab=geri-donusler',
       icon: '📣',
     })
   })

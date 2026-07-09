@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { canEditMarketing } from '../lib/permissions'
@@ -11,6 +12,7 @@ import { Modal } from '../components/ui/Modal'
 import { ContentStudio } from '../components/marketing/ContentStudio'
 import { IdeaLab } from '../components/marketing/IdeaLab'
 import { ImpactAnalysis } from '../components/marketing/ImpactAnalysis'
+import Tasks from './Tasks'
 import { formatCurrency, generateId, cn } from '../lib/utils'
 import { FINANCE_CATEGORY_LABELS } from '../lib/constants'
 
@@ -20,6 +22,7 @@ const TABS = [
   { id: 'fikir', label: 'Fikir Lab', icon: '💡' },
   { id: 'etki', label: 'Etki Analizi', icon: '📈' },
   { id: 'kampanya', label: 'Kampanyalar', icon: '💰' },
+  { id: 'isler', label: 'İşler', icon: '✅' },
 ]
 
 export default function Marketing() {
@@ -27,7 +30,9 @@ export default function Marketing() {
   const { campaigns, companies, contents, upsertCampaign, upsertFinance, settings } = useData()
   const canEdit = canEditMarketing(currentUser)
   const readOnly = !canEdit
-  const [tab, setTab] = useState('ozet')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') || 'ozet'
+  const setTab = (id) => setSearchParams({ tab: id }, { replace: true })
 
   const stats = useMemo(() => buildMarketingStats(campaigns, companies), [campaigns, companies])
   const channelData = Object.entries(stats.byChannel).map(([label, v]) => ({ label, value: v.harcanan }))
@@ -156,6 +161,7 @@ export default function Marketing() {
       {tab === 'studio' && <ContentStudio canEdit={canEdit} />}
       {tab === 'fikir' && <IdeaLab canEdit={canEdit} />}
       {tab === 'etki' && <ImpactAnalysis />}
+      {tab === 'isler' && <Tasks hub="reklam" title="Reklam İşleri" subtitle="Büyüme ve kampanya görevleri" />}
 
       {tab === 'kampanya' && (
         <SectionCard title="Kampanyalar" subtitle={readOnly ? 'Salt okuma' : 'Meta/Google — elle giriş'}>

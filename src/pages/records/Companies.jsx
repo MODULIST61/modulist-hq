@@ -33,7 +33,7 @@ const emptyCompany = () => ({
   notlar: '',
 })
 
-export default function Companies() {
+export default function Companies({ firmalarPath = '/sekreter/firmalar' }) {
   const { users, currentUser } = useAuth()
   const { companies, upsertCompany, deleteCompany } = useData()
   const navigate = useNavigate()
@@ -108,7 +108,7 @@ export default function Companies() {
       ) : view === 'kanban' ? (
         <KanbanBoard
           columns={pipelineColumns}
-          onCardClick={(item) => navigate(`/kayitlar/firmalar/${item.raw.id}`)}
+          onCardClick={(item) => navigate(`${firmalarPath}/${item.raw.id}`)}
           onDrop={handlePipelineDrop}
         />
       ) : (
@@ -127,7 +127,7 @@ export default function Companies() {
               {filtered.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                   <td className="px-4 py-3">
-                    <Link to={`/kayitlar/firmalar/${c.id}`} className="font-medium text-accent hover:underline">{c.ad}</Link>
+                    <Link to={`${firmalarPath}/${c.id}`} className="font-medium text-accent hover:underline">{c.ad}</Link>
                     <div className="text-xs text-slate-400">{c.sektor}</div>
                   </td>
                   <td className="px-4 py-3"><PipelineBadge stage={c.pipeline} /></td>

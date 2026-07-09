@@ -7,7 +7,7 @@ import { PageHeader, Card } from '../components/ui/Page'
 import { JobBadge } from '../components/ui/Badge'
 import { relativeTime, cn } from '../lib/utils'
 
-export default function Personnel() {
+export default function Personnel({ embedded = false, personBasePath = '/patron/personel' }) {
   const { users } = useAuth()
   const data = useData()
 
@@ -21,14 +21,16 @@ export default function Personnel() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <PageHeader
-        title="Personeller"
-        subtitle="Tıkla — o kişiyle ilgili her şeyi gör (görev, firma, mesaj, metrik, performans)"
-      />
+      {!embedded && (
+        <PageHeader
+          title="Personeller"
+          subtitle="Tıkla — o kişiyle ilgili her şeyi gör (görev, firma, mesaj, metrik, performans)"
+        />
+      )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {staff.map((p) => (
-          <Link key={p.user.id} to={`/personel/${p.user.id}`}>
+          <Link key={p.user.id} to={`${personBasePath}/${p.user.id}`}>
             <Card className={cn(
               'p-5 hover:border-accent hover:shadow-md transition-all h-full',
               p.stats.overdueTasks > 0 && 'border-danger/40'

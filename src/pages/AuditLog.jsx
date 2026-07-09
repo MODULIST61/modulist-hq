@@ -23,7 +23,7 @@ const ACTION_LABELS = {
   finance_create: 'Finans kaydı',
 }
 
-export default function AuditLog() {
+export default function AuditLog({ embedded = false }) {
   const { users } = useAuth()
   const { auditLogs } = useData()
   const [search, setSearch] = useState('')
@@ -76,11 +76,18 @@ export default function AuditLog() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <PageHeader
-        title="Denetim Günlüğü"
-        subtitle="Kim ne yaptı — giriş, görev, firma, finans, metrik"
-        action={<Button variant="outline" size="sm" onClick={exportCsv}>CSV İndir</Button>}
-      />
+      {!embedded && (
+        <PageHeader
+          title="Denetim Günlüğü"
+          subtitle="Kim ne yaptı — giriş, görev, firma, finans, metrik"
+          action={<Button variant="outline" size="sm" onClick={exportCsv}>CSV İndir</Button>}
+        />
+      )}
+      {embedded && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={exportCsv}>CSV İndir</Button>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-3">
         <Input placeholder="Ara (özet, kişi, aksiyon)..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -115,7 +122,7 @@ export default function AuditLog() {
                   <td className="px-4 py-3 whitespace-nowrap text-slate-500">{formatDateTime(a.created_at)}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {a.user_id ? (
-                      <Link to={`/personel/${a.user_id}`} className="text-accent hover:underline">
+                      <Link to={`/patron/personel/${a.user_id}`} className="text-accent hover:underline">
                         {getUserName(users, a.user_id)}
                       </Link>
                     ) : '—'}

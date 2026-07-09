@@ -26,7 +26,7 @@ export function buildActivityFeed(data, users, limit = 30) {
         icon: '✅',
         text: `Görev tamamlandı: ${t.baslik}`,
         time: t.updated_at || t.created_at,
-        link: '/isler',
+        link: '/yazilim?tab=isler',
       })
     }
   })
@@ -38,7 +38,7 @@ export function buildActivityFeed(data, users, limit = 30) {
       icon: '🏢',
       text: `${c.ad} — pipeline: ${c.pipeline}`,
       time: c.updated_at,
-      link: `/kayitlar/firmalar/${c.id}`,
+      link: `/sekreter/firmalar/${c.id}`,
     })
   })
 
@@ -49,7 +49,7 @@ export function buildActivityFeed(data, users, limit = 30) {
       icon: '🐛',
       text: `Bug [${b.durum}]: ${b.baslik}`,
       time: b.updated_at || b.created_at,
-      link: '/kayitlar/buglar',
+      link: '/yazilim?tab=buglar',
     })
   })
 
@@ -60,7 +60,7 @@ export function buildActivityFeed(data, users, limit = 30) {
       icon: '💰',
       text: `Onay bekleyen gider: ${formatCurrency(f.tutar)} — ${f.aciklama || f.kategori}`,
       time: f.created_at,
-      link: '/finans',
+      link: '/patron?tab=finans',
     })
   })
 
@@ -71,7 +71,7 @@ export function buildActivityFeed(data, users, limit = 30) {
       icon: '📣',
       text: `Geri dönüş [${f.tip}]: ${f.metin?.slice(0, 60)}`,
       time: f.created_at,
-      link: '/kayitlar/geri-donusler',
+      link: '/yazilim?tab=geri-donusler',
     })
   })
 
@@ -82,7 +82,7 @@ export function buildActivityFeed(data, users, limit = 30) {
       icon: '📞',
       text: `${getUserName(users, d.user_id)} bugün ${d.arama_sayisi} arama yaptı`,
       time: d.created_at,
-      link: '/kayitlar/gunluk-metrik',
+      link: '/sekreter?tab=metrik',
     })
   })
 

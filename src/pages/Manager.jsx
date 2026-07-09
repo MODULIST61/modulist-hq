@@ -27,7 +27,7 @@ function MarkdownView({ text }) {
   )
 }
 
-export default function Manager() {
+export default function Manager({ embedded = false }) {
   const { users } = useAuth()
   const data = useData()
   const [period, setPeriod] = useState('week')
@@ -74,10 +74,12 @@ export default function Manager() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <PageHeader
-        title="Müdür"
-        subtitle="Yapay zeka destekli patron raporu — kim ne yaptı, ne eksik, neye dikkat"
-      />
+      {!embedded && (
+        <PageHeader
+          title="Müdür"
+          subtitle="Yapay zeka destekli patron raporu — kim ne yaptı, ne eksik, neye dikkat"
+        />
+      )}
 
       <SectionCard title="Rapor Oluştur" subtitle={`Model: ${modelName} · ChatGPT`}>
         <div className="space-y-4">

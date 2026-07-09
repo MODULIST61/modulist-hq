@@ -7,7 +7,7 @@ import { cn } from '../lib/utils'
 
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
-export default function Calendar() {
+export default function Calendar({ embedded = false }) {
   const { companies } = useData()
   const navigate = useNavigate()
   const [offset, setOffset] = useState(0)
@@ -55,10 +55,12 @@ export default function Calendar() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary dark:text-white">Demo Takvimi</h1>
-        <p className="text-sm text-slate-500">Firma demo randevuları — firmalardan otomatik çekilir</p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-2xl font-bold text-primary dark:text-white">Demo Takvimi</h1>
+          <p className="text-sm text-slate-500">Firma demo randevuları — firmalardan otomatik çekilir</p>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">

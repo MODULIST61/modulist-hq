@@ -19,7 +19,7 @@ const TIMELINE_ICONS = {
   pipeline: '🔄',
 }
 
-export default function CompanyDetail() {
+export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
   const { id } = useParams()
   const { users, currentUser } = useAuth()
   const { companies, messages, tasks, feedback, finance, upsertCompany } = useData()
@@ -93,7 +93,7 @@ export default function CompanyDetail() {
         emoji="🏢"
         title="Firma bulunamadı"
         description="Bu firma silinmiş veya mevcut değil."
-        action={<Button onClick={() => navigate('/kayitlar/firmalar')}>Listeye dön</Button>}
+        action={<Button onClick={() => navigate(backPath)}>Listeye dön</Button>}
       />
     )
   }
@@ -236,7 +236,7 @@ export default function CompanyDetail() {
         {tab === 'feedback' && (
           <Card className="p-5">
             {relatedFeedback.length === 0 ? (
-              <EmptyIllustration emoji="📣" title="Geri dönüş yok" description="Bu firmadan henüz geri bildirim kaydedilmedi." action={<Button variant="outline" onClick={() => navigate('/kayitlar/geri-donusler')}>Geri dönüş ekle</Button>} />
+              <EmptyIllustration emoji="📣" title="Geri dönüş yok" description="Bu firmadan henüz geri bildirim kaydedilmedi." action={<Button variant="outline" onClick={() => navigate('/yazilim?tab=geri-donusler')}>Geri dönüş ekle</Button>} />
             ) : (
               <div className="space-y-4">
                 {relatedFeedback.map((f) => (
@@ -255,7 +255,7 @@ export default function CompanyDetail() {
         )}
       </div>
 
-      <button onClick={() => navigate('/kayitlar/firmalar')} className="mt-6 text-sm text-slate-500 hover:text-accent transition-colors">← Firmalar listesine dön</button>
+      <button type="button" onClick={() => navigate(backPath)} className="mt-6 text-sm text-slate-500 hover:text-accent transition-colors">← Firmalar listesine dön</button>
     </div>
   )
 }

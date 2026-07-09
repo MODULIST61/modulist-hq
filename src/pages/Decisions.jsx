@@ -9,7 +9,7 @@ import { RoleBadge } from '../components/ui/Badge'
 import { EmptyState } from '../components/ui/Modal'
 import { formatDateTime, truncate, cn } from '../lib/utils'
 
-export default function Decisions() {
+export default function Decisions({ embedded = false }) {
   const { currentUser, users } = useAuth()
   const { messages, rooms, deleteMessage } = useData()
   const navigate = useNavigate()
@@ -40,10 +40,12 @@ export default function Decisions() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-primary dark:text-white">Kararlar</h1>
-        <p className="text-sm text-slate-500">Karar tipi mesajların arşivi{patron ? ' — patron silebilir' : ''}</p>
-      </div>
+      {!embedded && (
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-primary dark:text-white">Kararlar</h1>
+          <p className="text-sm text-slate-500">Karar tipi mesajların arşivi{patron ? ' — patron silebilir' : ''}</p>
+        </div>
+      )}
 
       <Input placeholder="Karar ara..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-md mb-4" />
 

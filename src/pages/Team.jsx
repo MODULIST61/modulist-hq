@@ -10,7 +10,7 @@ import { PermissionEditor } from '../components/team/PermissionEditor'
 import { createPermissionsFromPreset, JOB_PRESETS } from '../lib/access'
 import { validateEmail } from '../lib/utils'
 
-export default function Team() {
+export default function Team({ embedded = false }) {
   const { currentUser, refreshUsers, users } = useAuth()
   const { addUser, updateUser, deleteUser } = useData()
   const [modal, setModal] = useState(null)
@@ -173,11 +173,18 @@ export default function Team() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <PageHeader
-        title="Ekip"
-        subtitle="Her kişinin görevini ve erişim yetkilerini siz belirlersiniz"
-        action={<Button onClick={openAdd}>+ Üye Ekle</Button>}
-      />
+      {!embedded && (
+        <PageHeader
+          title="Ekip"
+          subtitle="Her kişinin görevini ve erişim yetkilerini siz belirlersiniz"
+          action={<Button onClick={openAdd}>+ Üye Ekle</Button>}
+        />
+      )}
+      {embedded && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={openAdd}>+ Üye Ekle</Button>
+        </div>
+      )}
 
       {actionError && (
         <p className="mb-4 text-sm text-danger bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">{actionError}</p>

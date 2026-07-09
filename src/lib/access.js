@@ -4,11 +4,15 @@ import { ROLES } from './constants'
 export const ROOM_SLUGS = ['genel', 'urun', 'satis', 'buyume', 'finans', 'operasyon']
 
 export const PAGE_KEYS = {
-  today: 'Bugün',
+  today: 'Ana Sayfa',
   messages: 'Mesajlar',
+  software: 'Yazılım',
+  marketing: 'Reklam',
+  secretary: 'Sekreter',
+  patronHub: 'Patron Paneli',
+  accounting: 'Muhasebe',
   tasks: 'İşler',
   records: 'Kayıtlar',
-  marketing: 'Reklam',
   calendar: 'Takvim',
   performance: 'Performans',
   weeklyReport: 'Haftalık Özet',
@@ -41,16 +45,16 @@ export const JOB_PRESETS = {
     label: 'Sekreter',
     job_title: 'Sekreter',
     permissions: {
-      pages: { today: true, messages: true, tasks: true, records: true, marketing: false, calendar: true, performance: false, weeklyReport: false, finance: false, decisions: false, team: false, settings: true },
+      pages: { today: true, messages: true, software: false, marketing: false, secretary: true, patronHub: false, accounting: false, tasks: true, records: false, calendar: true, performance: false, weeklyReport: false, finance: false, decisions: false, team: false, settings: true },
       rooms: { genel: 'write', urun: 'none', satis: 'read', buyume: 'none', finans: 'none', operasyon: 'write' },
-      actions: { viewCommandCenter: false, manageTeam: false, approveFinance: false, editFinance: false, viewFinance: false, editMarketing: false, viewMarketing: false, logDailyMetrics: false, submitExpense: false, viewTeamPerformance: false, patronBroadcast: false, manageRecords: true },
+      actions: { viewCommandCenter: false, manageTeam: false, approveFinance: false, editFinance: false, viewFinance: false, editMarketing: false, viewMarketing: false, logDailyMetrics: true, submitExpense: true, viewTeamPerformance: false, patronBroadcast: false, manageRecords: true },
     },
   },
   muhasebeci: {
     label: 'Muhasebeci',
     job_title: 'Muhasebeci',
     permissions: {
-      pages: { today: true, messages: true, tasks: false, records: true, marketing: false, calendar: true, performance: false, weeklyReport: false, finance: true, decisions: false, team: false, settings: true },
+      pages: { today: true, messages: true, software: false, marketing: false, secretary: false, patronHub: false, accounting: true, tasks: false, records: true, calendar: true, performance: false, weeklyReport: false, finance: true, decisions: false, team: false, settings: true },
       rooms: { genel: 'read', urun: 'none', satis: 'none', buyume: 'none', finans: 'write', operasyon: 'none' },
       actions: { viewCommandCenter: false, manageTeam: false, approveFinance: false, editFinance: true, viewFinance: true, editMarketing: false, viewMarketing: false, logDailyMetrics: false, submitExpense: true, viewTeamPerformance: false, patronBroadcast: false, manageRecords: true },
     },
@@ -59,7 +63,7 @@ export const JOB_PRESETS = {
     label: 'Reklamcı',
     job_title: 'Reklamcı',
     permissions: {
-      pages: { today: true, messages: true, tasks: true, records: true, marketing: true, calendar: true, performance: true, weeklyReport: false, finance: false, decisions: false, team: false, settings: true },
+      pages: { today: true, messages: true, software: false, marketing: true, secretary: false, patronHub: false, accounting: false, tasks: true, records: false, calendar: true, performance: false, weeklyReport: false, finance: false, decisions: false, team: false, settings: true },
       rooms: { genel: 'write', urun: 'none', satis: 'read', buyume: 'write', finans: 'none', operasyon: 'none' },
       actions: { viewCommandCenter: false, manageTeam: false, approveFinance: false, editFinance: false, viewFinance: false, editMarketing: true, viewMarketing: true, logDailyMetrics: false, submitExpense: true, viewTeamPerformance: false, patronBroadcast: false, manageRecords: true },
     },
@@ -68,7 +72,7 @@ export const JOB_PRESETS = {
     label: 'Yazılımcı',
     job_title: 'Yazılımcı',
     permissions: {
-      pages: { today: true, messages: true, tasks: true, records: true, marketing: false, calendar: true, performance: true, weeklyReport: false, finance: false, decisions: true, team: false, settings: true },
+      pages: { today: true, messages: true, software: true, marketing: false, secretary: false, patronHub: false, accounting: false, tasks: true, records: false, calendar: true, performance: false, weeklyReport: false, finance: false, decisions: true, team: false, settings: true },
       rooms: { genel: 'write', urun: 'write', satis: 'read', buyume: 'none', finans: 'none', operasyon: 'none' },
       actions: { viewCommandCenter: false, manageTeam: false, approveFinance: false, editFinance: false, viewFinance: false, editMarketing: false, viewMarketing: false, logDailyMetrics: false, submitExpense: false, viewTeamPerformance: false, patronBroadcast: false, manageRecords: true },
     },
@@ -77,7 +81,7 @@ export const JOB_PRESETS = {
     label: 'Satışçı',
     job_title: 'Satışçı',
     permissions: {
-      pages: { today: true, messages: true, tasks: true, records: true, marketing: true, calendar: true, performance: true, weeklyReport: false, finance: false, decisions: false, team: false, settings: true },
+      pages: { today: true, messages: true, software: false, marketing: true, secretary: true, patronHub: false, accounting: false, tasks: true, records: false, calendar: true, performance: false, weeklyReport: false, finance: false, decisions: false, team: false, settings: true },
       rooms: { genel: 'write', urun: 'read', satis: 'write', buyume: 'read', finans: 'none', operasyon: 'read' },
       actions: { viewCommandCenter: false, manageTeam: false, approveFinance: false, editFinance: false, viewFinance: false, editMarketing: false, viewMarketing: true, logDailyMetrics: true, submitExpense: false, viewTeamPerformance: false, patronBroadcast: false, manageRecords: true },
     },
@@ -210,18 +214,11 @@ export function getVisibleNavItems(user, navItems) {
   const pathToPage = {
     '/': 'today',
     '/mesajlar': 'messages',
-    '/isler': 'tasks',
-    '/kayitlar': 'records',
+    '/yazilim': 'software',
     '/reklam': 'marketing',
-    '/takvim': 'calendar',
-    '/performans': 'performance',
-    '/haftalik-ozet': 'weeklyReport',
-    '/finans': 'finance',
-    '/kararlar': 'decisions',
-    '/ekip': 'team',
-    '/personel': 'personnel',
-    '/denetim': 'audit',
-    '/mudur': 'manager',
+    '/sekreter': 'secretary',
+    '/patron': 'patronHub',
+    '/muhasebe': 'accounting',
     '/ayarlar': 'settings',
   }
   return navItems.filter((item) => {

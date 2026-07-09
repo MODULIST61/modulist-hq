@@ -9,10 +9,11 @@ import { StatusBadge, PriorityBadge } from '../components/ui/Badge'
 import { KanbanBoard } from '../components/ui/KanbanBoard'
 import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from '../lib/constants'
 import { formatDate, getUserName, isOverdue, cn } from '../lib/utils'
+import { filterTasksByHub, taskRecordLink } from '../lib/hubTasks'
 
 const KANBAN_COLS = ['yapilacak', 'devam', 'tamamlandi']
 
-export default function Tasks() {
+export default function Tasks({ hub, title = 'İşler', subtitle }) {
   const { currentUser, users } = useAuth()
   const { tasks, rooms, companies, bugs, campaigns, addTask, updateTask, deleteTask, taskComments, addTaskComment } = useData()
   const [view, setView] = useState('kanban')
@@ -22,10 +23,12 @@ export default function Tasks() {
   const [form, setForm] = useState({})
   const [commentText, setCommentText] = useState('')
 
+  const hubTasks = useMemo(() => filterTasksByHub(tasks, rooms, hub), [tasks, rooms, hub])
+
   const kanbanColumns = useMemo(() => {
     const pool = filter.assignee === 'mine'
-      ? tasks.filter((t) => t.sorumlu_id === currentUser.id)
-      : tasks
+      ? hubTasks.filter((t) => t.sorumlu_id === currentUser.id)
+      : hubTasks
     return KANBAN_COLS.map((status) => ({
       id: status,
       title: TASK_STATUS_LABELS[status],
@@ -38,7 +41,7 @@ export default function Tasks() {
         raw: t,
       })),
     }))
-  }, [tasks, filter, currentUser.id, users])
+  }, [hubTasks, filter, currentUser.id, users])
 
   const handleKanbanDrop = (itemId, _from, toCol) => {
     updateTask(itemId, { durum: toCol })
@@ -47,17 +50,22 @@ export default function Tasks() {
   const detailComments = detail ? taskComments.filter((c) => c.task_id === detail.id) : []
 
   const filtered = useMemo(() => {
-    return tasks.filter((t) => {
+    return hubTasks.filter((t) => {
       if (filter.assignee === 'mine' && t.sorumlu_id !== currentUser.id) return false
       if (filter.durum && t.durum !== filter.durum) return false
       if (filter.oncelik && t.oncelik !== filter.oncelik) return false
       if (filter.room && t.room_id !== filter.room) return false
       return true
     })
-  }, [tasks, filter, currentUser.id])
+  }, [hubTasks, filter, currentUser.id])
+
+  const defaultRoomForHub = hub === 'yazilim' ? rooms.find((r) => r.slug === 'urun')?.id
+    : hub === 'reklam' ? rooms.find((r) => r.slug === 'buyume')?.id
+    : hub === 'sekreter' ? rooms.find((r) => r.slug === 'operasyon')?.id
+    : ''
 
   const openNew = () => {
-    setForm({ baslik: '', aciklama: '', sorumlu_id: currentUser.id, durum: 'yapilacak', oncelik: 'normal', bitis_tarihi: '', room_id: '', kayit_tipi: '', kayit_id: '' })
+    setForm({ baslik: '', aciklama: '', sorumlu_id: currentUser.id, durum: 'yapilacak', oncelik: 'normal', bitis_tarihi: '', room_id: defaultRoomForHub || '', kayit_tipi: '', kayit_id: '' })
     setModal('new')
   }
 
@@ -79,19 +87,14 @@ export default function Tasks() {
     setModal(null)
   }
 
-  const getRecordLink = (task) => {
-    if (!task.kayit_tipi || !task.kayit_id) return null
-    if (task.kayit_tipi === 'firma') return `/kayitlar/firmalar/${task.kayit_id}`
-    if (task.kayit_tipi === 'bug') return `/kayitlar/buglar?detay=${task.kayit_id}`
-    return '/kayitlar/kampanyalar'
-  }
+  const getRecordLink = (task) => taskRecordLink(task)
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-primary dark:text-white">İşler</h1>
-          <p className="text-sm text-slate-500">{filtered.length} görev</p>
+          <h1 className="text-xl font-bold text-primary dark:text-white">{title}</h1>
+          <p className="text-sm text-slate-500">{subtitle || `${filtered.length} görev`}</p>
         </div>
         <Button onClick={openNew}>+ Yeni Görev</Button>
         <div className="flex rounded-lg border overflow-hidden">

@@ -35,7 +35,7 @@ function GoalBar({ label, current, goal, unit = '' }) {
   )
 }
 
-export default function Performance() {
+export default function Performance({ embedded = false }) {
   const { currentUser, users } = useAuth()
   const { tasks, companies, dailyMetrics, settings } = useData()
   const patron = canDo(currentUser, 'viewTeamPerformance')
@@ -53,10 +53,12 @@ export default function Performance() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <PageHeader
-        title="Performans Skorları"
-        subtitle="Son 30 gün — arama, demo, görev tamamlama ve dönüşüm"
-      />
+      {!embedded && (
+        <PageHeader
+          title="Performans Skorları"
+          subtitle="Son 30 gün — arama, demo, görev tamamlama ve dönüşüm"
+        />
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="p-5 text-center">

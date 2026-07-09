@@ -28,9 +28,9 @@ export function TopBar({ onMenuClick, onSearchOpen }) {
   const handleNotifClick = (n) => {
     markNotificationRead(n.id)
     if (n.tip === 'mention' && n.ref?.room_id) navigate(`/mesajlar?oda=${n.ref.room_id}`)
-    if (n.tip === 'gorev_atandi') navigate('/isler')
-    if (n.tip === 'finans_onay') navigate('/finans')
-    if (n.tip === 'trial_bitiyor') navigate('/kayitlar/firmalar')
+    if (n.tip === 'gorev_atandi') navigate('/yazilim?tab=isler')
+    if (n.tip === 'finans_onay') navigate('/patron?tab=finans')
+    if (n.tip === 'trial_bitiyor') navigate('/sekreter?tab=firmalar')
     if (n.tip === 'patron_duyuru') navigate('/mesajlar?oda=genel')
     if (n.tip === 'dm') navigate('/mesajlar?panel=dm')
     setShowNotifs(false)

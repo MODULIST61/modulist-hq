@@ -24,9 +24,11 @@ const emptyEntry = () => ({
   durum: 'onaylandi',
 })
 
-export default function Finance() {
+export default function Finance({ mode = 'patron', embedded = false }) {
   const { users } = useAuth()
   const { finance, companies, campaigns, settings, upsertFinance, approveFinance, rejectFinance, deleteFinance } = useData()
+  const isPatronMode = mode === 'patron'
+  const isAccountingMode = mode === 'accounting'
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(emptyEntry())
   const [tab, setTab] = useState('all')
@@ -85,16 +87,24 @@ export default function Finance() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary dark:text-white">Finans</h1>
-          <p className="text-sm text-slate-500">Gelir, gider, onay akışı</p>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-primary dark:text-white">{isAccountingMode ? 'Muhasebe Kayıtları' : 'Finans'}</h1>
+            <p className="text-sm text-slate-500">{isPatronMode ? 'Gelir, gider, onay akışı' : 'Gelir-gider defteri'}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => { setForm({ ...emptyEntry(), durum: isAccountingMode ? 'onaylandi' : 'onaylandi' }); setModal(true) }}>+ Hareket</Button>
+            <Button variant="outline" onClick={() => downloadCsv(`finans-${new Date().toISOString().split('T')[0]}.csv`, financeToCsv(finance, users, campaigns))}>CSV İndir</Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-        <Button onClick={() => { setForm(emptyEntry()); setModal(true) }}>+ Hareket</Button>
-        <Button variant="outline" onClick={() => downloadCsv(`finans-${new Date().toISOString().split('T')[0]}.csv`, financeToCsv(finance, users, campaigns))}>CSV İndir</Button>
+      )}
+      {embedded && (
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => { setForm({ ...emptyEntry(), durum: isAccountingMode ? 'onaylandi' : 'onaylandi' }); setModal(true) }}>+ Hareket</Button>
+          <Button variant="outline" onClick={() => downloadCsv(`finans-${new Date().toISOString().split('T')[0]}.csv`, financeToCsv(finance, users, campaigns))}>CSV</Button>
         </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
@@ -112,7 +122,13 @@ export default function Finance() {
         ))}
       </div>
 
-      {pending.length > 0 && (
+      {isAccountingMode && pending.length > 0 && (
+        <SectionCard title={`Patron Onayı Bekleyen (${pending.length})`} subtitle="Bu kayıtlar patron panelinde onaylanır">
+          <p className="text-sm text-slate-500">Onay için Patron → Finans sekmesine gidin.</p>
+        </SectionCard>
+      )}
+
+      {isPatronMode && pending.length > 0 && (
         <SectionCard title={`Onay Bekleyen Giderler (${pending.length})`} subtitle="Pazarlama ve operasyon talepleri">
           <div className="space-y-2">
             {pending.map((f) => (
@@ -126,8 +142,12 @@ export default function Finance() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => openApproval(f, 'approve')}>Onayla</Button>
-                  <Button size="sm" variant="danger" onClick={() => openApproval(f, 'reject')}>Reddet</Button>
+                  {isPatronMode && (
+                    <>
+                      <Button size="sm" onClick={() => openApproval(f, 'approve')}>Onayla</Button>
+                      <Button size="sm" variant="danger" onClick={() => openApproval(f, 'reject')}>Reddet</Button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

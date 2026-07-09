@@ -186,7 +186,7 @@ export function buildAlerts(data, users) {
     .filter((t) => isOverdue(t.bitis_tarihi) && !['tamamlandi', 'iptal'].includes(t.durum))
     .forEach((t) => {
       const name = users.find((u) => u.id === t.sorumlu_id)?.name || 'Atanmamış'
-      alerts.push({ level: 'danger', text: `Geciken görev: ${t.baslik} (${name})`, link: '/isler' })
+      alerts.push({ level: 'danger', text: `Geciken görev: ${t.baslik} (${name})`, link: '/yazilim?tab=isler' })
     })
 
   data.companies
@@ -195,20 +195,20 @@ export function buildAlerts(data, users) {
       const end = new Date(c.trial_bitis)
       const days = Math.ceil((end - new Date()) / 86400000)
       if (days >= 0 && days <= 3) {
-        alerts.push({ level: 'warning', text: `Trial bitiyor: ${c.ad} (${days} gün)`, link: `/kayitlar/firmalar/${c.id}` })
+        alerts.push({ level: 'warning', text: `Trial bitiyor: ${c.ad} (${days} gün)`, link: `/sekreter/firmalar/${c.id}` })
       }
     })
 
   data.companies.filter((c) => isToday(c.demo_tarihi)).forEach((c) => {
-    alerts.push({ level: 'accent', text: `Bugün demo: ${c.ad}`, link: `/kayitlar/firmalar/${c.id}` })
+    alerts.push({ level: 'accent', text: `Bugün demo: ${c.ad}`, link: `/sekreter/firmalar/${c.id}` })
   })
 
   data.finance.filter((f) => f.durum === 'bekliyor').forEach((f) => {
-    alerts.push({ level: 'warning', text: `Onay bekleyen gider: ${f.aciklama || f.kategori}`, link: '/finans' })
+    alerts.push({ level: 'warning', text: `Onay bekleyen gider: ${f.aciklama || f.kategori}`, link: '/patron?tab=finans' })
   })
 
   data.bugs.filter((b) => b.oncelik === 'kritik' && b.durum !== 'kapali').forEach((b) => {
-    alerts.push({ level: 'danger', text: `Kritik bug: ${b.baslik}`, link: '/kayitlar/buglar' })
+    alerts.push({ level: 'danger', text: `Kritik bug: ${b.baslik}`, link: '/yazilim?tab=buglar' })
   })
 
   users
@@ -226,7 +226,7 @@ export function buildAlerts(data, users) {
         alerts.push({
           level: 'warning',
           text: `${u.name}: ${daysSince >= 999 ? 'hiç' : daysSince} gündür metrik girmedi`,
-          link: '/kayitlar/gunluk-metrik',
+          link: '/sekreter?tab=metrik',
         })
       }
     })
@@ -241,7 +241,7 @@ export function buildAlerts(data, users) {
         alerts.push({
           level: 'warning',
           text: `Durgun firma (${days}g): ${c.ad} — ${c.pipeline}`,
-          link: `/kayitlar/firmalar/${c.id}`,
+          link: `/sekreter/firmalar/${c.id}`,
         })
       }
     })
@@ -256,7 +256,7 @@ export function buildAlerts(data, users) {
         alerts.push({
           level: 'accent',
           text: `${u.name}: ${days} gündür giriş yapmadı`,
-          link: `/personel/${u.id}`,
+          link: `/patron/personel/${u.id}`,
         })
       }
     })

@@ -9,7 +9,7 @@ import { PageHeader } from '../components/ui/Page'
 import { Button } from '../components/ui/Button'
 import { formatCurrency } from '../lib/utils'
 
-export default function WeeklyReport() {
+export default function WeeklyReport({ embedded = false }) {
   const { users } = useAuth()
   const data = useData()
   const [copied, setCopied] = useState(false)
@@ -45,10 +45,12 @@ export default function WeeklyReport() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <PageHeader
-        title="Haftalık Özet Raporu"
-        subtitle="Otomatik özet — kopyala, PDF indir veya yazdır"
-      />
+      {!embedded && (
+        <PageHeader
+          title="Haftalık Özet Raporu"
+          subtitle="Otomatik özet — kopyala, PDF indir veya yazdır"
+        />
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Haftalık Arama" value={stats.totalCalls} variant="accent" />

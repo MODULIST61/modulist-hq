@@ -172,26 +172,22 @@ export const CONTENT_STATUS_LABELS = {
 }
 
 export const NAV_ITEMS = [
-  { path: '/', label: 'Bugün', icon: 'today', section: 'genel', permission: 'today' },
-  { path: '/mesajlar', label: 'Mesajlar', icon: 'messages', section: 'genel', permission: 'messages' },
-  { path: '/isler', label: 'İşler', icon: 'tasks', section: 'genel', permission: 'tasks' },
-  { path: '/kayitlar', label: 'Kayıtlar', icon: 'records', section: 'genel', permission: 'records' },
-  { path: '/reklam', label: 'Reklam', icon: 'marketing', section: 'buyume', permission: 'marketing' },
-  { path: '/takvim', label: 'Takvim', icon: 'calendar', section: 'buyume', permission: 'calendar' },
-  { path: '/performans', label: 'Performans', icon: 'performance', section: 'buyume', permission: 'performance' },
-  { path: '/haftalik-ozet', label: 'Haftalık Özet', icon: 'report', section: 'yonetim', permission: 'weeklyReport' },
-  { path: '/finans', label: 'Finans', icon: 'finance', section: 'yonetim', permission: 'finance' },
-  { path: '/kararlar', label: 'Kararlar', icon: 'decisions', section: 'yonetim', permission: 'decisions' },
-  { path: '/personel', label: 'Personeller', icon: 'personnel', section: 'yonetim', permission: 'personnel' },
-  { path: '/denetim', label: 'Denetim', icon: 'audit', section: 'yonetim', permission: 'audit' },
-  { path: '/mudur', label: 'Müdür', icon: 'manager', section: 'yonetim', permission: 'manager' },
-  { path: '/ekip', label: 'Ekip', icon: 'team', section: 'yonetim', permission: 'team' },
+  { path: '/', label: 'Ana Sayfa', icon: 'today', section: 'ana', permission: 'today' },
+  { path: '/mesajlar', label: 'Mesajlar', icon: 'messages', section: 'ana', permission: 'messages' },
+  { path: '/yazilim', label: 'Yazılım', icon: 'software', section: 'yazilim', permission: 'software' },
+  { path: '/reklam', label: 'Reklam', icon: 'marketing', section: 'reklam', permission: 'marketing' },
+  { path: '/sekreter', label: 'Sekreter', icon: 'secretary', section: 'sekreter', permission: 'secretary' },
+  { path: '/patron', label: 'Patron', icon: 'patron', section: 'patron', permission: 'patronHub' },
+  { path: '/muhasebe', label: 'Muhasebe', icon: 'finance', section: 'muhasebe', permission: 'accounting' },
   { path: '/ayarlar', label: 'Ayarlar', icon: 'settings', section: 'sistem', permission: 'settings' },
 ]
 
 export const NAV_SECTIONS = {
-  genel: 'Genel',
-  buyume: 'Büyüme',
-  yonetim: 'Yönetim',
+  ana: 'Ana Sayfa',
+  yazilim: 'Yazılım',
+  reklam: 'Reklam',
+  sekreter: 'Sekreter & Satış',
+  patron: 'Patron',
+  muhasebe: 'Muhasebe',
   sistem: '',
 }

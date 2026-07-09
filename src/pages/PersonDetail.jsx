@@ -21,7 +21,7 @@ const TABS = [
 
 const TIMELINE_ICONS = { audit: '📋', mesaj: '💬', gorev: '✅', metrik: '📊' }
 
-export default function PersonDetail() {
+export default function PersonDetail({ backPath = '/patron?tab=personel' }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const { users } = useAuth()
@@ -40,7 +40,7 @@ export default function PersonDetail() {
     return (
       <Card className="p-8 text-center">
         <p className="text-slate-500 mb-4">Personel bulunamadı.</p>
-        <Button onClick={() => navigate('/personel')}>← Personellere dön</Button>
+        <Button onClick={() => navigate(backPath)}>← Personellere dön</Button>
       </Card>
     )
   }
@@ -51,7 +51,7 @@ export default function PersonDetail() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/personel')} className="mb-2">← Personeller</Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="mb-2">← Personeller</Button>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-primary dark:text-white">{user.name}</h1>
             <JobBadge user={user} />
@@ -161,7 +161,7 @@ export default function PersonDetail() {
             ) : (
               <p className="text-sm text-slate-400">Veri yok</p>
             )}
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/performans')}>Performans paneli →</Button>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/patron?tab=performans')}>Performans paneli →</Button>
           </Card>
         </div>
       )}
@@ -185,7 +185,7 @@ export default function PersonDetail() {
       {tab === 'firmalar' && (
         <div className="space-y-2">
           {companies.map((c) => (
-            <Link key={c.id} to={`/kayitlar/firmalar/${c.id}`}>
+            <Link key={c.id} to={`/sekreter/firmalar/${c.id}`}>
               <Card className="p-4 flex items-center justify-between hover:border-accent">
                 <div>
                   <div className="font-medium">{c.ad}</div>

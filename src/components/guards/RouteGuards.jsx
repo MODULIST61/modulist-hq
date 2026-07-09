@@ -76,3 +76,36 @@ export function MarketingGuard({ children }) {
 export function PatronWeeklyGuard({ children }) {
   return <PageGuard page="weeklyReport">{children}</PageGuard>
 }
+
+export function PatronHubGuard({ children }) {
+  return <PageGuard page="patronHub">{children}</PageGuard>
+}
+
+export function SoftwareHubGuard({ children }) {
+  return <PageGuard page="software">{children}</PageGuard>
+}
+
+export function SecretaryHubGuard({ children }) {
+  return <PageGuard page="secretary">{children}</PageGuard>
+}
+
+export function AccountingHubGuard({ children }) {
+  return <PageGuard page="accounting">{children}</PageGuard>
+}
+
+export function LegacyFinanceRedirect() {
+  const { currentUser } = useAuth()
+  if (!currentUser) return <Navigate to="/giris" replace />
+  if (isPatron(currentUser)) return <Navigate to="/patron?tab=finans" replace />
+  if (canAccessPage(currentUser, 'accounting')) return <Navigate to="/muhasebe" replace />
+  return <Navigate to="/erisim-reddedildi" replace />
+}
+
+export function LegacyTasksRedirect() {
+  const { currentUser } = useAuth()
+  if (!currentUser) return <Navigate to="/giris" replace />
+  if (canAccessPage(currentUser, 'software')) return <Navigate to="/yazilim?tab=isler" replace />
+  if (canAccessPage(currentUser, 'secretary')) return <Navigate to="/sekreter?tab=isler" replace />
+  if (canAccessPage(currentUser, 'marketing')) return <Navigate to="/reklam" replace />
+  return <Navigate to="/" replace />
+}
