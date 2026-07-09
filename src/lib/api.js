@@ -83,10 +83,20 @@ export async function updateWorkspaceSettings(settings) {
   return merged
 }
 
+async function fetchOptional(builder) {
+  const { data, error } = await builder
+  if (error) {
+    if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('schema cache')) return []
+    throw error
+  }
+  return data || []
+}
+
 export async function fetchAllData() {
   const [
     rooms, messages, tasks, companies, bugs, campaigns, contents,
     finance, feedback, dailyMetrics, dmThreads, notifications, workspace,
+    auditLogs, taskComments, userActivity,
   ] = await Promise.all([
     supabase.from('hq_rooms').select('*').order('created_at'),
     supabase.from('hq_messages').select('*').order('created_at'),
@@ -101,6 +111,9 @@ export async function fetchAllData() {
     supabase.from('hq_dm_threads').select('*').order('last_message_at', { ascending: false }),
     supabase.from('hq_notifications').select('*').order('created_at', { ascending: false }),
     supabase.from('hq_workspace').select('settings').eq('id', 1).single(),
+    fetchOptional(supabase.from('hq_audit_log').select('*').order('created_at', { ascending: false }).limit(500)),
+    fetchOptional(supabase.from('hq_task_comments').select('*').order('created_at')),
+    fetchOptional(supabase.from('hq_user_activity').select('*')),
   ])
 
   const errors = [rooms, messages, tasks, companies, bugs, campaigns, contents, finance, feedback, dailyMetrics, dmThreads, notifications, workspace]
@@ -120,6 +133,9 @@ export async function fetchAllData() {
     dailyMetrics: dailyMetrics.data || [],
     dmThreads: dmThreads.data || [],
     notifications: notifications.data || [],
+    auditLogs: auditLogs || [],
+    taskComments: taskComments || [],
+    userActivity: userActivity || [],
     settings: workspace.data?.settings || {},
   }
 }
@@ -259,7 +275,28 @@ export function subscribeToRealtime(onChange) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'hq_notifications' }, () => onChange('notifications'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'hq_tasks' }, () => onChange('tasks'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'hq_dm_threads' }, () => onChange('dmThreads'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'hq_audit_log' }, () => onChange('audit'))
     .subscribe()
 
   return () => supabase.removeChannel(channel)
+}
+
+export async function insertAuditLog(entry) {
+  const { data, error } = await supabase.from('hq_audit_log').insert(entry).select().single()
+  throwIfError(error)
+  return data
+}
+
+export async function insertTaskComment(comment) {
+  const { data, error } = await supabase.from('hq_task_comments').insert(comment).select().single()
+  throwIfError(error)
+  return data
+}
+
+export async function upsertUserActivity(userId, fields) {
+  const now = new Date().toISOString()
+  const row = { user_id: userId, updated_at: now, ...fields }
+  const { data, error } = await supabase.from('hq_user_activity').upsert(row).select().single()
+  throwIfError(error)
+  return data
 }

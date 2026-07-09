@@ -21,6 +21,9 @@ const emptyState = {
   dailyMetrics: [],
   dmThreads: [],
   notifications: [],
+  auditLogs: [],
+  taskComments: [],
+  userActivity: [],
   settings: {},
 }
 
@@ -53,7 +56,7 @@ export function DataProvider({ children }) {
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined
     return api.subscribeToRealtime((table) => {
-      if (['messages', 'notifications', 'tasks', 'dmThreads'].includes(table)) {
+      if (['messages', 'notifications', 'tasks', 'dmThreads', 'audit'].includes(table)) {
         reload()
       }
     })
@@ -62,6 +65,34 @@ export function DataProvider({ children }) {
   const setLocal = useCallback((updater) => {
     setData((prev) => (typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }))
   }, [])
+
+  const logAudit = useCallback(async (action, summary, entityType = null, entityId = null, meta = {}) => {
+    if (!currentUser?.id) return null
+    try {
+      const saved = await api.insertAuditLog({
+        user_id: currentUser.id,
+        action,
+        entity_type: entityType,
+        entity_id: entityId ? String(entityId) : null,
+        summary,
+        meta,
+      })
+      setLocal((prev) => ({ ...prev, auditLogs: [saved, ...prev.auditLogs].slice(0, 500) }))
+      return saved
+    } catch (e) {
+      console.warn('Audit log:', e.message)
+      return null
+    }
+  }, [currentUser, setLocal])
+
+  useEffect(() => {
+    if (!currentUser?.id || !isSupabaseConfigured) return undefined
+    api.upsertUserActivity(currentUser.id, { last_seen_at: new Date().toISOString() }).catch(() => {})
+    const t = setInterval(() => {
+      api.upsertUserActivity(currentUser.id, { last_seen_at: new Date().toISOString() }).catch(() => {})
+    }, 120000)
+    return () => clearInterval(t)
+  }, [currentUser?.id])
 
   const addNotification = useCallback(async (notif) => {
     const row = {
@@ -119,8 +150,9 @@ export function DataProvider({ children }) {
     }
     const saved = await api.insertMessage(payload)
     setLocal((prev) => ({ ...prev, messages: [...prev.messages, saved] }))
+    logAudit('message_send', `Mesaj: ${payload.text.slice(0, 60)}`, 'message', saved.id)
     return saved
-  }, [currentUser, addNotification, setLocal])
+  }, [currentUser, addNotification, setLocal, logAudit])
 
   const updateMessage = useCallback(async (id, updates) => {
     const saved = await api.patchMessage(id, updates)
@@ -193,11 +225,12 @@ export function DataProvider({ children }) {
     }
     const saved = await api.insertTask(row)
     setLocal((prev) => ({ ...prev, tasks: [saved, ...prev.tasks] }))
+    logAudit('task_create', `Görev oluşturuldu: ${saved.baslik}`, 'task', saved.id)
     if (saved.sorumlu_id && saved.sorumlu_id !== currentUser?.id) {
       await addNotification({ tip: 'gorev_atandi', user_id: saved.sorumlu_id, ref: { task_id: saved.id } })
     }
     return saved
-  }, [currentUser, addNotification, setLocal])
+  }, [currentUser, addNotification, setLocal, logAudit])
 
   const updateTask = useCallback(async (id, updates) => {
     const saved = await api.patchTask(id, updates)
@@ -205,7 +238,12 @@ export function DataProvider({ children }) {
       ...prev,
       tasks: prev.tasks.map((t) => (t.id === id ? saved : t)),
     }))
-  }, [setLocal])
+    if (updates.durum === 'tamamlandi') {
+      logAudit('task_done', `Görev tamamlandı: ${saved.baslik}`, 'task', id)
+    } else {
+      logAudit('task_update', `Görev güncellendi: ${saved.baslik}`, 'task', id, updates)
+    }
+  }, [setLocal, logAudit])
 
   const deleteTask = useCallback(async (id) => {
     await api.removeTask(id)
@@ -213,17 +251,35 @@ export function DataProvider({ children }) {
   }, [setLocal])
 
   const upsertCompany = useCallback(async (company) => {
+    const prev = dataRef.current.companies.find((c) => c.id === company.id)
     const saved = await api.upsertRecord('hq_companies', company)
-    setLocal((prev) => {
-      const exists = prev.companies.find((c) => c.id === saved.id)
+    setLocal((prevState) => {
+      const exists = prevState.companies.find((c) => c.id === saved.id)
       return {
-        ...prev,
+        ...prevState,
         companies: exists
-          ? prev.companies.map((c) => (c.id === saved.id ? saved : c))
-          : [saved, ...prev.companies],
+          ? prevState.companies.map((c) => (c.id === saved.id ? saved : c))
+          : [saved, ...prevState.companies],
       }
     })
-  }, [setLocal])
+    if (!prev) {
+      logAudit('company_create', `Firma eklendi: ${saved.ad}`, 'company', saved.id)
+    } else if (prev.pipeline !== saved.pipeline) {
+      logAudit('pipeline_change', `${saved.ad}: ${prev.pipeline} → ${saved.pipeline}`, 'company', saved.id)
+      if (['demo', 'trial', 'musteri'].includes(saved.pipeline)) {
+        await addTask({
+          baslik: `Pipeline: ${saved.ad} — ${saved.pipeline}`,
+          aciklama: `${saved.ad} firması ${saved.pipeline} aşamasına geçti`,
+          sorumlu_id: saved.sorumlu_id || currentUser?.id,
+          oncelik: 'normal',
+          kayit_tipi: 'firma',
+          kayit_id: saved.id,
+        })
+      }
+    } else {
+      logAudit('company_update', `Firma güncellendi: ${saved.ad}`, 'company', saved.id)
+    }
+  }, [setLocal, logAudit, addTask, currentUser])
 
   const deleteCompany = useCallback(async (id) => {
     await api.deleteFrom('hq_companies', id)
@@ -364,7 +420,15 @@ export function DataProvider({ children }) {
           : [saved, ...prev.dailyMetrics],
       }
     })
-  }, [currentUser, setLocal])
+    logAudit('metric_log', `Günlük metrik: ${saved.arama_sayisi} arama`, 'metric', saved.id)
+  }, [currentUser, setLocal, logAudit])
+
+  const addTaskComment = useCallback(async (taskId, text) => {
+    const saved = await api.insertTaskComment({ task_id: taskId, user_id: currentUser.id, text })
+    setLocal((prev) => ({ ...prev, taskComments: [...prev.taskComments, saved] }))
+    logAudit('task_update', `Göreve yorum: ${text.slice(0, 40)}`, 'task', taskId)
+    return saved
+  }, [currentUser, setLocal, logAudit])
 
   const deleteDailyMetric = useCallback(async (id) => {
     await api.deleteFrom('hq_daily_metrics', id)
@@ -449,6 +513,8 @@ export function DataProvider({ children }) {
         addUser,
         updateUser,
         deleteUser,
+        logAudit,
+        addTaskComment,
       }}
     >
       {children}

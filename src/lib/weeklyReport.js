@@ -79,7 +79,7 @@ export function generateWeeklyReport(data, users) {
   Object.entries(byUser).forEach(([name, count]) => lines.push(`  • ${name}: ${count} arama`))
   if (!Object.keys(byUser).length) lines.push('  • Henüz veri yok')
 
-  lines.push('', '— Modulist HQ otomatik özet (mock e-posta) —')
+  lines.push('', '— Modulist HQ haftalık özet —')
 
   return {
     text: lines.join('\n'),

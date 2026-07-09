@@ -153,6 +153,7 @@ export const NAV_ITEMS = [
   { path: '/haftalik-ozet', label: 'Haftalık Özet', icon: 'report', section: 'yonetim', permission: 'weeklyReport' },
   { path: '/finans', label: 'Finans', icon: 'finance', section: 'yonetim', permission: 'finance' },
   { path: '/kararlar', label: 'Kararlar', icon: 'decisions', section: 'yonetim', permission: 'decisions' },
+  { path: '/personel', label: 'Personeller', icon: 'personnel', section: 'yonetim', permission: 'personnel' },
   { path: '/ekip', label: 'Ekip', icon: 'team', section: 'yonetim', permission: 'team' },
   { path: '/ayarlar', label: 'Ayarlar', icon: 'settings', section: 'sistem', permission: 'settings' },
 ]

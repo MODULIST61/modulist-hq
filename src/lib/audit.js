@@ -1,0 +1,16 @@
+export const AUDIT_ACTIONS = {
+  LOGIN: 'login',
+  TASK_CREATE: 'task_create',
+  TASK_UPDATE: 'task_update',
+  TASK_DONE: 'task_done',
+  COMPANY_CREATE: 'company_create',
+  COMPANY_UPDATE: 'company_update',
+  PIPELINE_CHANGE: 'pipeline_change',
+  FINANCE_CREATE: 'finance_create',
+  FINANCE_APPROVE: 'finance_approve',
+  FINANCE_REJECT: 'finance_reject',
+  BUG_UPDATE: 'bug_update',
+  MESSAGE_SEND: 'message_send',
+  METRIC_LOG: 'metric_log',
+  MEMBER_ADD: 'member_add',
+}

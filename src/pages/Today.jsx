@@ -11,6 +11,7 @@ import {
   todayCallTotals,
   pipelineFunnel,
 } from '../lib/analytics'
+import { buildAlerts, buildTeamDailySummary } from '../lib/personAnalytics'
 import {
   StatCard,
   ActivityFeed,
@@ -34,6 +35,8 @@ export default function Today() {
   const marketing = useMemo(() => buildMarketingStats(data.campaigns, data.companies), [data.campaigns, data.companies])
   const calls = useMemo(() => todayCallTotals(data.dailyMetrics), [data.dailyMetrics])
   const funnel = useMemo(() => pipelineFunnel(data.companies), [data.companies])
+  const alerts = useMemo(() => buildAlerts(data, users), [data, users])
+  const teamDaily = useMemo(() => (patron ? buildTeamDailySummary(users, data) : []), [patron, users, data])
 
   const pendingFinance = data.finance.filter((f) => f.durum === 'bekliyor')
   const openFeedback = data.feedback.filter((f) => f.durum !== 'cozuldu')
@@ -75,6 +78,9 @@ export default function Today() {
         {patron && (
           <Button variant="outline" onClick={() => navigate('/haftalik-ozet')}>Haftalık Özet →</Button>
         )}
+        {patron && (
+          <Button variant="outline" onClick={() => navigate('/personel')}>Personeller →</Button>
+        )}
         </div>
       </div>
 
@@ -93,6 +99,61 @@ export default function Today() {
           </>
         )}
       </div>
+
+      {patron && alerts.length > 0 && (
+        <SectionCard title="Uyarılar" subtitle="Geciken işler, trial, demo, onay bekleyen">
+          <div className="space-y-2">
+            {alerts.slice(0, 8).map((a, i) => (
+              <button
+                key={i}
+                onClick={() => navigate(a.link)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm hover:opacity-90 ${
+                  a.level === 'danger' ? 'bg-red-50 text-red-800 dark:bg-red-900/20' :
+                  a.level === 'warning' ? 'bg-amber-50 text-amber-800 dark:bg-amber-900/20' :
+                  'bg-blue-50 text-blue-800 dark:bg-blue-900/20'
+                }`}
+              >
+                {a.text}
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {patron && teamDaily.length > 0 && (
+        <SectionCard title="Ekip Bugün" subtitle="Günlük aktivite özeti" action={<Button variant="ghost" size="sm" onClick={() => navigate('/personel')}>Tüm personel →</Button>}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="py-2">Kişi</th>
+                  <th>Arama</th>
+                  <th>Demo</th>
+                  <th>Açık iş</th>
+                  <th>Geciken</th>
+                  <th>Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamDaily.map((row) => (
+                  <tr key={row.user.id} className="border-t dark:border-slate-800">
+                    <td className="py-2">
+                      <button className="text-accent hover:underline font-medium" onClick={() => navigate(`/personel/${row.user.id}`)}>
+                        {row.user.name}
+                      </button>
+                    </td>
+                    <td>{row.arama}</td>
+                    <td>{row.demo}</td>
+                    <td>{row.openTasks}</td>
+                    <td className={row.overdue ? 'text-danger font-medium' : ''}>{row.overdue}</td>
+                    <td>{row.activeToday ? <span className="text-emerald-600 text-xs">Aktif</span> : <span className="text-slate-400 text-xs">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">

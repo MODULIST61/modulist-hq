@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useData } from '../../context/DataContext'
@@ -6,8 +6,9 @@ import { Button } from '../../components/ui/Button'
 import { Input, Select, Textarea } from '../../components/ui/Input'
 import { Modal, EmptyState } from '../../components/ui/Modal'
 import { PipelineBadge } from '../../components/ui/Badge'
+import { KanbanBoard } from '../../components/ui/KanbanBoard'
 import { PIPELINE_STAGES, PIPELINE_LABELS } from '../../lib/constants'
-import { formatDate, generateId } from '../../lib/utils'
+import { formatDate, generateId, cn } from '../../lib/utils'
 
 const emptyCompany = () => ({
   id: '',
@@ -35,12 +36,33 @@ const emptyCompany = () => ({
 export default function Companies() {
   const { users, currentUser } = useAuth()
   const { companies, upsertCompany, deleteCompany } = useData()
+  const navigate = useNavigate()
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(emptyCompany())
   const [errors, setErrors] = useState({})
   const [search, setSearch] = useState('')
+  const [view, setView] = useState('kanban')
 
   const filtered = companies.filter((c) => !search || c.ad.toLowerCase().includes(search.toLowerCase()))
+
+  const pipelineColumns = useMemo(() => {
+    return PIPELINE_STAGES.filter((p) => p !== 'kayip').map((stage) => ({
+      id: stage,
+      title: PIPELINE_LABELS[stage],
+      items: filtered.filter((c) => c.pipeline === stage).map((c) => ({
+        id: c.id,
+        title: c.ad,
+        subtitle: c.yetkili || c.sektor,
+        badge: <PipelineBadge stage={stage} />,
+        raw: c,
+      })),
+    }))
+  }, [filtered])
+
+  const handlePipelineDrop = (itemId, _from, toStage) => {
+    const company = companies.find((c) => c.id === itemId)
+    if (company) upsertCompany({ ...company, pipeline: toStage })
+  }
 
   const validate = () => {
     const e = {}
@@ -72,11 +94,23 @@ export default function Companies() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <Input placeholder="Firma ara..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <Button onClick={openNew}>+ Firma Ekle</Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border overflow-hidden">
+            <button onClick={() => setView('kanban')} className={cn('px-3 py-1.5 text-xs font-medium', view === 'kanban' ? 'bg-accent text-white' : 'bg-white dark:bg-slate-900')}>Pipeline</button>
+            <button onClick={() => setView('list')} className={cn('px-3 py-1.5 text-xs font-medium', view === 'list' ? 'bg-accent text-white' : 'bg-white dark:bg-slate-900')}>Liste</button>
+          </div>
+          <Button onClick={openNew}>+ Firma Ekle</Button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <EmptyState icon="🏢" title="Henüz firma yok" description="Satış pipeline'ınızı takip etmek için ilk firmayı ekleyin." action={<Button onClick={openNew}>İlk firmayı ekle</Button>} />
+      ) : view === 'kanban' ? (
+        <KanbanBoard
+          columns={pipelineColumns}
+          onCardClick={(item) => navigate(`/kayitlar/firmalar/${item.raw.id}`)}
+          onDrop={handlePipelineDrop}
+        />
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto">
           <table className="w-full text-sm">

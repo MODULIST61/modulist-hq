@@ -1,20 +1,16 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { generateWeeklyReport, mockSendWeeklyEmail } from '../lib/weeklyReport'
+import { generateWeeklyReport } from '../lib/weeklyReport'
 import { printWeeklyReport } from '../lib/print'
 import { SectionCard, StatCard } from '../components/dashboard/DashboardWidgets'
 import { PageHeader } from '../components/ui/Page'
 import { Button } from '../components/ui/Button'
-import { Input } from '../components/ui/Input'
 import { formatCurrency } from '../lib/utils'
 
 export default function WeeklyReport() {
-  const { currentUser, users } = useAuth()
+  const { users } = useAuth()
   const data = useData()
-  const [email, setEmail] = useState(currentUser?.email || '')
-  const [sending, setSending] = useState(false)
-  const [lastSent, setLastSent] = useState(null)
   const [copied, setCopied] = useState(false)
 
   const report = useMemo(() => generateWeeklyReport(data, users), [data, users])
@@ -35,28 +31,13 @@ export default function WeeklyReport() {
     URL.revokeObjectURL(url)
   }
 
-  const sendMockEmail = async () => {
-    if (!email) return
-    setSending(true)
-    try {
-      const result = await mockSendWeeklyEmail(report.text, email)
-      setLastSent(result)
-      data.updateSettings({
-        lastWeeklyReport: result,
-        weeklyReportEmail: email,
-      })
-    } finally {
-      setSending(false)
-    }
-  }
-
   const { stats } = report
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <PageHeader
         title="Haftalık Özet Raporu"
-        subtitle="Otomatik özet — yazdır, indir veya mock e-posta gönder"
+        subtitle="Otomatik özet — kopyala, indir veya yazdır"
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -82,26 +63,20 @@ export default function WeeklyReport() {
           </pre>
         </SectionCard>
 
-        <SectionCard title="Mock E-posta Gönder" subtitle="Gerçek e-posta sunucusu yok — simülasyon">
+        <SectionCard title="Paylaşım" subtitle="E-posta veya WhatsApp ile manuel gönderim">
           <div className="space-y-4">
-            <Input label="Alıcı e-posta" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="patron@modulist.net" />
-            <p className="text-xs text-slate-400">
-              Haftalık özet bu adrese gönderilmiş gibi simüle edilir. Gerçek SMTP entegrasyonu V3+ backend ile eklenebilir.
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Raporu <strong>Kopyala</strong> ile panoya alıp patron veya ekibe e-posta / WhatsApp üzerinden gönderebilirsiniz.
+              Otomatik e-posta entegrasyonu bu sürümde yok — tüm paylaşım elle yapılır.
             </p>
-            <Button onClick={sendMockEmail} disabled={sending || !email} className="w-full">
-              {sending ? 'Gönderiliyor...' : 'Haftalık Özet Gönder (Mock)'}
+            <ol className="text-xs text-slate-500 space-y-2 list-decimal list-inside">
+              <li>Sol taraftan raporu kopyalayın veya .txt indirin</li>
+              <li>E-posta istemcinizde veya WhatsApp’ta yapıştırın</li>
+              <li>İsterseniz Yazdır / PDF ile arşivleyin</li>
+            </ol>
+            <Button onClick={copyReport} className="w-full">
+              {copied ? 'Panoya kopyalandı!' : 'Raporu Kopyala'}
             </Button>
-            {lastSent && (
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-sm text-emerald-700 dark:text-emerald-300">
-                ✓ Mock gönderim başarılı — {lastSent.to}<br />
-                <span className="text-xs opacity-75">{new Date(lastSent.sent_at).toLocaleString('tr-TR')}</span>
-              </div>
-            )}
-            {data.settings?.lastWeeklyReport && !lastSent && (
-              <p className="text-xs text-slate-400">
-                Son gönderim: {data.settings.lastWeeklyReport.to} — {new Date(data.settings.lastWeeklyReport.sent_at).toLocaleString('tr-TR')}
-              </p>
-            )}
           </div>
         </SectionCard>
       </div>

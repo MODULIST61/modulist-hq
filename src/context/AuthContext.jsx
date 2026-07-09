@@ -50,6 +50,9 @@ export function AuthProvider({ children }) {
       session.setSession(user.id)
       setSessionState(session.getSession())
       await refreshUsers()
+      const now = new Date().toISOString()
+      api.upsertUserActivity(user.id, { last_login_at: now, last_seen_at: now }).catch(() => {})
+      api.insertAuditLog({ user_id: user.id, action: 'login', summary: `${user.name} giriş yaptı`, entity_type: 'user', entity_id: user.id }).catch(() => {})
       return { ok: true }
     } catch (e) {
       return { ok: false, error: e.message || 'Giriş başarısız.' }

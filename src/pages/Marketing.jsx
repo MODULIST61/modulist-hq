@@ -10,11 +10,10 @@ import { Input, Select, Textarea } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { formatCurrency, generateId } from '../lib/utils'
 import { FINANCE_CATEGORY_LABELS } from '../lib/constants'
-import { mockSyncAdPlatform } from '../lib/mockAdSync'
 
 export default function Marketing() {
   const { currentUser } = useAuth()
-  const { campaigns, companies, upsertCampaign, upsertFinance, updateSettings, settings } = useData()
+  const { campaigns, companies, upsertCampaign, upsertFinance } = useData()
   const canEdit = canEditMarketing(currentUser)
   const readOnly = !canEdit
 
@@ -23,17 +22,13 @@ export default function Marketing() {
   const [expenseModal, setExpenseModal] = useState(false)
   const [form, setForm] = useState({})
   const [expense, setExpense] = useState({ tutar: 0, aciklama: '', kampanya_id: '', kategori: 'reklam' })
-  const [syncing, setSyncing] = useState(null)
-  const [syncResult, setSyncResult] = useState(null)
-  const [metaKey, setMetaKey] = useState(settings?.metaApiKey || '')
-  const [googleKey, setGoogleKey] = useState(settings?.googleApiKey || '')
 
   const channelData = Object.entries(stats.byChannel).map(([label, v]) => ({ label, value: v.harcanan }))
 
   const openCampaign = (c = null) => {
     setForm(c || {
       ad: '', kanal: 'Meta', donem_baslangic: '', donem_bitis: '',
-      butce_plan: 0, butce_harcanan: 0, tiklama: 0, kayit_sayisi: 0, notlar: '',
+      butce_plan: 0, butce_harcanan: 0, gosterim: 0, erisim: 0, tiklama: 0, kayit_sayisi: 0, notlar: '',
     })
     setCampModal(true)
   }
@@ -63,34 +58,13 @@ export default function Marketing() {
     setExpense({ tutar: 0, aciklama: '', kampanya_id: '', kategori: 'reklam' })
   }
 
-  const handleSync = async (platform) => {
-    setSyncing(platform)
-    setSyncResult(null)
-    try {
-      const result = await mockSyncAdPlatform(platform, campaigns, upsertCampaign)
-      setSyncResult(result)
-      updateSettings({
-        metaApiKey: metaKey,
-        googleApiKey: googleKey,
-        lastAdSync: { ...result, platform },
-      })
-    } finally {
-      setSyncing(null)
-    }
-  }
-
-  const saveApiKeys = () => {
-    updateSettings({ metaApiKey: metaKey, googleApiKey: googleKey })
-    alert('API anahtarları kaydedildi (local mock).')
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary dark:text-white">Reklam & Büyüme</h1>
           <p className="text-sm text-slate-500">
-            {readOnly ? 'Salt okuma — performans özeti' : 'Kampanya ve bütçe yönetimi'}
+            {readOnly ? 'Salt okuma — performans özeti' : 'Kampanya verileri elle girilir (Meta/Google panelinden kopyala)'}
           </p>
         </div>
         {canEdit && (
@@ -148,6 +122,8 @@ export default function Marketing() {
                 <th className="pb-2">Kanal</th>
                 <th className="pb-2">Harcanan / Plan</th>
                 <th className="pb-2">Tıklama</th>
+                <th className="pb-2">Gösterim</th>
+                <th className="pb-2">Erişim</th>
                 <th className="pb-2">Kayıt</th>
                 <th className="pb-2">CPA</th>
                 {canEdit && <th className="pb-2" />}
@@ -163,6 +139,8 @@ export default function Marketing() {
                     <td className="py-3"><span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{c.kanal}</span></td>
                     <td className="py-3">{formatCurrency(c.butce_harcanan)} / {formatCurrency(c.butce_plan)} <span className={`text-xs ml-1 ${pct >= 80 ? 'text-amber-600' : 'text-slate-400'}`}>(%{pct})</span></td>
                     <td className="py-3">{c.tiklama || 0}</td>
+                    <td className="py-3">{(c.gosterim || 0).toLocaleString('tr-TR')}</td>
+                    <td className="py-3">{(c.erisim || 0).toLocaleString('tr-TR')}</td>
                     <td className="py-3">{c.kayit_sayisi || 0}</td>
                     <td className="py-3">{cpa ? formatCurrency(cpa) : '—'}</td>
                     {canEdit && <td className="py-3"><Button variant="ghost" size="sm" onClick={() => openCampaign(c)}>Düzenle</Button></td>}
@@ -175,35 +153,6 @@ export default function Marketing() {
         </div>
       </SectionCard>
 
-      {canEdit && (
-        <SectionCard title="Meta / Google API (Mock)" subtitle="Otomatik reklam verisi senkronizasyonu — backend yok, simülasyon">
-          <p className="text-xs text-slate-500 mb-4">
-            Gerçek API entegrasyonu için backend gerekir. Bu mock senkron, mevcut kampanyaları günceller veya yeni kampanya oluşturur.
-          </p>
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <Input label="Meta API Key (mock)" value={metaKey} onChange={(e) => setMetaKey(e.target.value)} placeholder="mock_meta_xxxx" />
-            <Input label="Google Ads API Key (mock)" value={googleKey} onChange={(e) => setGoogleKey(e.target.value)} placeholder="mock_google_xxxx" />
-          </div>
-          <div className="flex flex-wrap gap-2 mb-4">
-            <Button variant="outline" size="sm" onClick={saveApiKeys}>Anahtarları Kaydet</Button>
-            <Button size="sm" onClick={() => handleSync('meta')} disabled={syncing === 'meta'}>
-              {syncing === 'meta' ? 'Senkronize...' : 'Meta Senkronize Et'}
-            </Button>
-            <Button size="sm" onClick={() => handleSync('google')} disabled={syncing === 'google'}>
-              {syncing === 'google' ? 'Senkronize...' : 'Google Senkronize Et'}
-            </Button>
-          </div>
-          {syncResult && (
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-sm text-emerald-700">
-              ✓ {syncResult.message} — {new Date(syncResult.synced_at).toLocaleString('tr-TR')}
-            </div>
-          )}
-          {settings?.lastAdSync && !syncResult && (
-            <p className="text-xs text-slate-400">Son sync: {settings.lastAdSync.platform} — {new Date(settings.lastAdSync.synced_at).toLocaleString('tr-TR')}</p>
-          )}
-        </SectionCard>
-      )}
-
       <Modal open={campModal} onClose={() => setCampModal(false)} title={form.id ? 'Kampanya Düzenle' : 'Yeni Kampanya'} size="lg">
         <div className="grid grid-cols-2 gap-4">
           <Input label="Kampanya Adı" value={form.ad || ''} onChange={(e) => setForm({ ...form, ad: e.target.value })} className="col-span-2" />
@@ -215,6 +164,8 @@ export default function Marketing() {
           <Input label="Bütçe Plan" type="number" value={form.butce_plan || 0} onChange={(e) => setForm({ ...form, butce_plan: Number(e.target.value) })} />
           <Input label="Harcanan" type="number" value={form.butce_harcanan || 0} onChange={(e) => setForm({ ...form, butce_harcanan: Number(e.target.value) })} />
           <Input label="Tıklama" type="number" value={form.tiklama || 0} onChange={(e) => setForm({ ...form, tiklama: Number(e.target.value) })} />
+          <Input label="Gösterim" type="number" value={form.gosterim || 0} onChange={(e) => setForm({ ...form, gosterim: Number(e.target.value) })} />
+          <Input label="Erişim" type="number" value={form.erisim || 0} onChange={(e) => setForm({ ...form, erisim: Number(e.target.value) })} />
           <Input label="Kayıt / Lead" type="number" value={form.kayit_sayisi || 0} onChange={(e) => setForm({ ...form, kayit_sayisi: Number(e.target.value) })} />
           <Textarea label="Notlar" value={form.notlar || ''} onChange={(e) => setForm({ ...form, notlar: e.target.value })} className="col-span-2" />
         </div>

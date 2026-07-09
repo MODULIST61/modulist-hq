@@ -5,6 +5,7 @@ import {
   canManageTeam,
   canAccessMarketing,
   canAccessPage,
+  isPatron,
 } from '../../lib/permissions'
 
 function AuthLoading() {
@@ -47,6 +48,13 @@ export function PatronTeamGuard({ children }) {
   const { currentUser } = useAuth()
   if (!currentUser) return <Navigate to="/giris" replace />
   if (!canManageTeam(currentUser)) return <Navigate to="/erisim-reddedildi" replace />
+  return children
+}
+
+export function PatronPersonnelGuard({ children }) {
+  const { currentUser } = useAuth()
+  if (!currentUser) return <Navigate to="/giris" replace />
+  if (!isPatron(currentUser)) return <Navigate to="/erisim-reddedildi" replace />
   return children
 }
 

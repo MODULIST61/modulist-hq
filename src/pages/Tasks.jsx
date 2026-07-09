@@ -1,21 +1,50 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { Button } from '../components/ui/Button'
 import { Input, Select, Textarea } from '../components/ui/Input'
 import { Modal, Drawer, EmptyState } from '../components/ui/Modal'
 import { StatusBadge, PriorityBadge } from '../components/ui/Badge'
+import { KanbanBoard } from '../components/ui/KanbanBoard'
 import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from '../lib/constants'
 import { formatDate, getUserName, isOverdue, cn } from '../lib/utils'
 
+const KANBAN_COLS = ['yapilacak', 'devam', 'tamamlandi']
+
 export default function Tasks() {
   const { currentUser, users } = useAuth()
-  const { tasks, rooms, companies, bugs, campaigns, addTask, updateTask, deleteTask } = useData()
+  const { tasks, rooms, companies, bugs, campaigns, addTask, updateTask, deleteTask, taskComments, addTaskComment } = useData()
+  const [view, setView] = useState('kanban')
   const [filter, setFilter] = useState({ assignee: 'mine', durum: '', oncelik: '', room: '' })
   const [modal, setModal] = useState(null)
   const [detail, setDetail] = useState(null)
   const [form, setForm] = useState({})
+  const [commentText, setCommentText] = useState('')
+
+  const kanbanColumns = useMemo(() => {
+    const pool = filter.assignee === 'mine'
+      ? tasks.filter((t) => t.sorumlu_id === currentUser.id)
+      : tasks
+    return KANBAN_COLS.map((status) => ({
+      id: status,
+      title: TASK_STATUS_LABELS[status],
+      headerClass: status === 'tamamlandi' ? 'text-emerald-600' : status === 'devam' ? 'text-blue-600' : '',
+      items: pool.filter((t) => t.durum === status && (!filter.oncelik || t.oncelik === filter.oncelik)).map((t) => ({
+        id: t.id,
+        title: t.baslik,
+        subtitle: `${getUserName(users, t.sorumlu_id)} · ${formatDate(t.bitis_tarihi)}`,
+        badge: <PriorityBadge priority={t.oncelik} />,
+        raw: t,
+      })),
+    }))
+  }, [tasks, filter, currentUser.id, users])
+
+  const handleKanbanDrop = (itemId, _from, toCol) => {
+    updateTask(itemId, { durum: toCol })
+  }
+
+  const detailComments = detail ? taskComments.filter((c) => c.task_id === detail.id) : []
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
@@ -65,6 +94,10 @@ export default function Tasks() {
           <p className="text-sm text-slate-500">{filtered.length} görev</p>
         </div>
         <Button onClick={openNew}>+ Yeni Görev</Button>
+        <div className="flex rounded-lg border overflow-hidden">
+          <button onClick={() => setView('kanban')} className={cn('px-3 py-1.5 text-xs font-medium', view === 'kanban' ? 'bg-accent text-white' : 'bg-white dark:bg-slate-900')}>Kanban</button>
+          <button onClick={() => setView('list')} className={cn('px-3 py-1.5 text-xs font-medium', view === 'list' ? 'bg-accent text-white' : 'bg-white dark:bg-slate-900')}>Liste</button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -88,6 +121,12 @@ export default function Tasks() {
 
       {filtered.length === 0 ? (
         <EmptyState icon="✅" title="Görev yok" description="Yeni görev oluşturun veya filtreleri değiştirin." action={<Button onClick={openNew}>İlk görevi ekle</Button>} />
+      ) : view === 'kanban' ? (
+        <KanbanBoard
+          columns={kanbanColumns}
+          onCardClick={(item) => setDetail(item.raw)}
+          onDrop={handleKanbanDrop}
+        />
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y dark:divide-slate-800">
           {filtered.map((task) => (
@@ -155,6 +194,24 @@ export default function Tasks() {
             <div><span className="text-slate-500">Sorumlu</span><p>{getUserName(users, detail.sorumlu_id)}</p></div>
             <div><span className="text-slate-500">Bitiş</span><p>{formatDate(detail.bitis_tarihi)}</p></div>
             {getRecordLink(detail) && <Link to={getRecordLink(detail)} className="text-accent hover:underline">İlişkili kayda git →</Link>}
+            <div className="border-t pt-4">
+              <p className="text-slate-500 text-xs mb-2">Yorumlar</p>
+              <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+                {detailComments.map((c) => (
+                  <div key={c.id} className="bg-slate-50 dark:bg-slate-800 rounded p-2 text-xs">
+                    <span className="font-medium">{getUserName(users, c.user_id)}: </span>{c.text}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Yorum yaz..." className="flex-1" />
+                <Button size="sm" onClick={async () => {
+                  if (!commentText.trim()) return
+                  await addTaskComment(detail.id, commentText.trim())
+                  setCommentText('')
+                }}>Ekle</Button>
+              </div>
+            </div>
           </div>
         )}
       </Drawer>
