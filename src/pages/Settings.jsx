@@ -72,6 +72,35 @@ export default function Settings() {
         {isPatron(currentUser) && (
           <>
             <Card className="p-5">
+              <h2 className="font-semibold mb-1">Müdür — OpenAI</h2>
+              <p className="text-xs text-slate-400 mb-4">ChatGPT API key sadece sunucu tarafında kullanılır (Edge Function). Patron dışında kimse görmez.</p>
+              <div className="space-y-3">
+                <Input
+                  label="OpenAI API Key"
+                  type="password"
+                  value={settings?.openaiApiKey || ''}
+                  onChange={(e) => updateSettings({ openaiApiKey: e.target.value.trim() })}
+                  placeholder="sk-..."
+                />
+                <label className="block text-sm">
+                  <span className="text-slate-500 text-xs mb-1 block">Model</span>
+                  <select
+                    value={settings?.openaiModel || 'gpt-4o-mini'}
+                    onChange={(e) => updateSettings({ openaiModel: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+                  >
+                    <option value="gpt-4o-mini">gpt-4o-mini (hızlı, ucuz)</option>
+                    <option value="gpt-4o">gpt-4o (en detaylı)</option>
+                    <option value="gpt-4-turbo">gpt-4-turbo</option>
+                  </select>
+                </label>
+                <p className="text-xs text-slate-400">
+                  Key kaydedildikten sonra Edge Function deploy edilmeli: <code className="text-accent">supabase functions deploy manager-report</code>
+                </p>
+              </div>
+            </Card>
+
+            <Card className="p-5">
               <h2 className="font-semibold mb-1">Performans Hedefleri</h2>
               <p className="text-xs text-slate-400 mb-4">30 günlük dönem için ekip hedefleri (Performans sayfasında gösterilir)</p>
               <div className="grid grid-cols-2 gap-3">

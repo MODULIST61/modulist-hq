@@ -17,6 +17,7 @@ export const PAGE_KEYS = {
   team: 'Ekip Yönetimi',
   personnel: 'Personeller',
   audit: 'Denetim Günlüğü',
+  manager: 'Müdür',
   settings: 'Ayarlar',
 }
 
@@ -220,6 +221,7 @@ export function getVisibleNavItems(user, navItems) {
     '/ekip': 'team',
     '/personel': 'personnel',
     '/denetim': 'audit',
+    '/mudur': 'manager',
     '/ayarlar': 'settings',
   }
   return navItems.filter((item) => {

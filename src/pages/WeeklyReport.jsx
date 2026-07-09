@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { generateWeeklyReport } from '../lib/weeklyReport'
 import { printWeeklyReport } from '../lib/print'
+import { downloadTextPdf } from '../lib/pdfExport'
 import { SectionCard, StatCard } from '../components/dashboard/DashboardWidgets'
 import { PageHeader } from '../components/ui/Page'
 import { Button } from '../components/ui/Button'
@@ -31,13 +32,22 @@ export default function WeeklyReport() {
     URL.revokeObjectURL(url)
   }
 
+  const downloadPdf = () => {
+    downloadTextPdf({
+      title: 'Haftalık Özet Raporu',
+      subtitle: `${new Date(report.period.start).toLocaleDateString('tr-TR')} — ${new Date(report.period.end).toLocaleDateString('tr-TR')}`,
+      body: report.text,
+      filename: `modulist-haftalik-${new Date().toISOString().split('T')[0]}.pdf`,
+    })
+  }
+
   const { stats } = report
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <PageHeader
         title="Haftalık Özet Raporu"
-        subtitle="Otomatik özet — kopyala, indir veya yazdır"
+        subtitle="Otomatik özet — kopyala, PDF indir veya yazdır"
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -54,7 +64,8 @@ export default function WeeklyReport() {
             <div className="flex gap-2 flex-wrap">
               <Button variant="ghost" size="sm" onClick={copyReport}>{copied ? 'Kopyalandı!' : 'Kopyala'}</Button>
               <Button variant="ghost" size="sm" onClick={downloadTxt}>.txt İndir</Button>
-              <Button variant="ghost" size="sm" onClick={() => printWeeklyReport(report.text)}>Yazdır / PDF</Button>
+              <Button variant="ghost" size="sm" onClick={downloadPdf}>PDF İndir</Button>
+              <Button variant="ghost" size="sm" onClick={() => printWeeklyReport(report.text)}>Yazdır</Button>
             </div>
           }
         >

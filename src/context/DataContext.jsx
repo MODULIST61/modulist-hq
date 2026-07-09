@@ -162,6 +162,15 @@ export function DataProvider({ children }) {
     }))
   }, [setLocal])
 
+  const deleteMessage = useCallback(async (id) => {
+    const msg = dataRef.current.messages.find((m) => m.id === id)
+    await api.removeMessage(id)
+    setLocal((prev) => ({ ...prev, messages: prev.messages.filter((m) => m.id !== id) }))
+    if (msg) {
+      logAudit('message_delete', `Mesaj silindi: ${msg.text.slice(0, 60)}`, 'message', id, { type: msg.type })
+    }
+  }, [setLocal, logAudit])
+
   const broadcastPatron = useCallback(async ({ text, type, toAllRooms, toGenel }, users) => {
     const rooms = dataRef.current.rooms
     const msgs = []
@@ -498,6 +507,7 @@ export function DataProvider({ children }) {
         reload,
         addMessage,
         updateMessage,
+        deleteMessage,
         broadcastPatron,
         getOrCreateDmThread,
         sendDm,

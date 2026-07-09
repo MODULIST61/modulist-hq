@@ -62,6 +62,10 @@ export function PatronAuditGuard({ children }) {
   return <PatronPersonnelGuard>{children}</PatronPersonnelGuard>
 }
 
+export function PatronManagerGuard({ children }) {
+  return <PatronPersonnelGuard>{children}</PatronPersonnelGuard>
+}
+
 export function MarketingGuard({ children }) {
   const { currentUser } = useAuth()
   if (!currentUser) return <Navigate to="/giris" replace />

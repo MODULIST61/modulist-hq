@@ -152,6 +152,11 @@ export async function patchMessage(id, updates) {
   return data
 }
 
+export async function removeMessage(id) {
+  const { error } = await supabase.from('hq_messages').delete().eq('id', id)
+  throwIfError(error)
+}
+
 export async function insertNotification(notif) {
   const { data, error } = await supabase.from('hq_notifications').insert(notif).select().single()
   throwIfError(error)

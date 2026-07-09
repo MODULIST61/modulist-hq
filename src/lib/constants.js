@@ -155,6 +155,7 @@ export const NAV_ITEMS = [
   { path: '/kararlar', label: 'Kararlar', icon: 'decisions', section: 'yonetim', permission: 'decisions' },
   { path: '/personel', label: 'Personeller', icon: 'personnel', section: 'yonetim', permission: 'personnel' },
   { path: '/denetim', label: 'Denetim', icon: 'audit', section: 'yonetim', permission: 'audit' },
+  { path: '/mudur', label: 'Müdür', icon: 'manager', section: 'yonetim', permission: 'manager' },
   { path: '/ekip', label: 'Ekip', icon: 'team', section: 'yonetim', permission: 'team' },
   { path: '/ayarlar', label: 'Ayarlar', icon: 'settings', section: 'sistem', permission: 'settings' },
 ]

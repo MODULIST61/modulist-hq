@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { DataProvider } from './context/DataContext'
 import { MainLayout } from './components/layout/MainLayout'
-import { RequireAuth, RequireSetup, PatronFinanceGuard, PatronTeamGuard, PatronPersonnelGuard, PatronAuditGuard, MarketingGuard, PatronWeeklyGuard, PageGuard } from './components/guards/RouteGuards'
+import { RequireAuth, RequireSetup, PatronFinanceGuard, PatronTeamGuard, PatronPersonnelGuard, PatronAuditGuard, PatronManagerGuard, MarketingGuard, PatronWeeklyGuard, PageGuard } from './components/guards/RouteGuards'
 
 import Setup from './pages/Setup'
 import Login from './pages/Login'
@@ -27,6 +27,7 @@ import Team from './pages/Team'
 import Personnel from './pages/Personnel'
 import PersonDetail from './pages/PersonDetail'
 import AuditLog from './pages/AuditLog'
+import Manager from './pages/Manager'
 import Settings from './pages/Settings'
 
 function AppRoutes() {
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="personel" element={<PatronPersonnelGuard><Personnel /></PatronPersonnelGuard>} />
         <Route path="personel/:id" element={<PatronPersonnelGuard><PersonDetail /></PatronPersonnelGuard>} />
         <Route path="denetim" element={<PatronAuditGuard><AuditLog /></PatronAuditGuard>} />
+        <Route path="mudur" element={<PatronManagerGuard><Manager /></PatronManagerGuard>} />
         <Route path="ayarlar" element={<PageGuard page="settings"><Settings /></PageGuard>} />
       </Route>
 
