@@ -43,6 +43,7 @@ export function seedWorkspace(patronUser) {
     finance: [],
     feedback: [],
     dailyMetrics: [],
+    interactions: [],
     dmThreads: [],
     notifications: [],
     settings: { darkMode: false, activeCustomerCount: 0, estimatedMrr: 0 },

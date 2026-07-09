@@ -95,7 +95,7 @@ async function fetchOptional(builder) {
 export async function fetchAllData() {
   const [
     rooms, messages, tasks, companies, bugs, campaigns, contents,
-    finance, feedback, dailyMetrics, dmThreads, notifications, workspace,
+    finance, feedback, dailyMetrics, interactions, dmThreads, notifications, workspace,
     auditLogs, taskComments, userActivity,
   ] = await Promise.all([
     supabase.from('hq_rooms').select('*').order('created_at'),
@@ -108,6 +108,7 @@ export async function fetchAllData() {
     supabase.from('hq_finance').select('*').order('tarih', { ascending: false }),
     supabase.from('hq_feedback').select('*').order('created_at', { ascending: false }),
     supabase.from('hq_daily_metrics').select('*').order('tarih', { ascending: false }),
+    fetchOptional(supabase.from('hq_interactions').select('*').order('created_at', { ascending: false })),
     supabase.from('hq_dm_threads').select('*').order('last_message_at', { ascending: false }),
     supabase.from('hq_notifications').select('*').order('created_at', { ascending: false }),
     supabase.from('hq_workspace').select('settings').eq('id', 1).single(),
@@ -131,6 +132,7 @@ export async function fetchAllData() {
     finance: finance.data || [],
     feedback: feedback.data || [],
     dailyMetrics: dailyMetrics.data || [],
+    interactions: interactions || [],
     dmThreads: dmThreads.data || [],
     notifications: notifications.data || [],
     auditLogs: auditLogs || [],

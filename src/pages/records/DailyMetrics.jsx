@@ -7,25 +7,36 @@ import { Input, Textarea } from '../../components/ui/Input'
 import { Modal, EmptyState } from '../../components/ui/Modal'
 import { SectionCard, BarChart } from '../../components/dashboard/DashboardWidgets'
 import { downloadCsv, metricsToCsv } from '../../lib/csv'
+import { computeDailyMetricsFromInteractions } from '../../lib/interactions'
 import { formatDate, generateId, getUserName, isToday } from '../../lib/utils'
 
 export default function DailyMetrics() {
   const { users, currentUser } = useAuth()
-  const { dailyMetrics, upsertDailyMetric, deleteDailyMetric } = useData()
+  const { dailyMetrics, interactions, upsertDailyMetric, deleteDailyMetric, syncMetricsFromInteractions } = useData()
   const canLog = canLogDailyMetrics(currentUser)
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState({})
 
   const today = new Date().toISOString().split('T')[0]
 
+  const autoToday = useMemo(
+    () => computeDailyMetricsFromInteractions(interactions, currentUser.id, today),
+    [interactions, currentUser.id, today],
+  )
+
   const todayTotals = useMemo(() => {
     const entries = dailyMetrics.filter((d) => isToday(d.tarih))
-    return {
+    const manual = {
       arama: entries.reduce((s, d) => s + (d.arama_sayisi || 0), 0),
       ulasilan: entries.reduce((s, d) => s + (d.ulasilan || 0), 0),
       demo: entries.reduce((s, d) => s + (d.demo_ayarlanan || 0), 0),
     }
-  }, [dailyMetrics])
+    return {
+      arama: Math.max(manual.arama, autoToday.arama_sayisi),
+      ulasilan: Math.max(manual.ulasilan, autoToday.ulasilan),
+      demo: Math.max(manual.demo, autoToday.demo_ayarlanan),
+    }
+  }, [dailyMetrics, autoToday])
 
   const byUser = useMemo(() => {
     const map = {}
@@ -64,7 +75,13 @@ export default function DailyMetrics() {
             <div className="text-xs text-slate-500">Demo Ayarlanan</div>
           </div>
         </div>
-        {canLog && <div className="flex gap-2"><Button onClick={openLog}>Bugünü Kaydet</Button><Button variant="outline" onClick={() => downloadCsv(`gunluk-metrik-${today}.csv`, metricsToCsv(dailyMetrics, users))}>CSV İndir</Button></div>}
+        {canLog && (
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={openLog}>Bugünü Kaydet</Button>
+            <Button variant="outline" onClick={() => syncMetricsFromInteractions(currentUser.id, today)}>İletişimden Senkronize</Button>
+            <Button variant="outline" onClick={() => downloadCsv(`gunluk-metrik-${today}.csv`, metricsToCsv(dailyMetrics, users))}>CSV İndir</Button>
+          </div>
+        )}
       </div>
 
       {byUser.length > 0 && (
@@ -73,8 +90,10 @@ export default function DailyMetrics() {
         </SectionCard>
       )}
 
+      <p className="text-xs text-slate-400">Metrikler iletişim kayıtlarından otomatik hesaplanır. Manuel giriş ile birleştirilir.</p>
+
       {dailyMetrics.length === 0 ? (
-        <EmptyState icon="📞" title="Henüz metrik yok" description="Günlük arama ve demo sayılarını kaydedin." action={canLog && <Button onClick={openLog}>İlk kaydı gir</Button>} />
+        <EmptyState icon="📞" title="Henüz metrik yok" description="Günlük arama ve demo sayılarını kaydedin veya iletişim logu girin." action={canLog && <Button onClick={openLog}>İlk kaydı gir</Button>} />
       ) : (
         <div className="bg-white dark:bg-slate-900 rounded-xl border overflow-x-auto">
           <table className="w-full text-sm">

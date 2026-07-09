@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import * as api from '../lib/api'
 import { generateId, parseMentionIds } from '../lib/utils'
 import { devUsers, pickDevAssignee, feedbackToBugDraft, bugPriorityToTask } from '../lib/bugFlow'
+import { computeDailyMetricsFromInteractions, isPhoneInteraction } from '../lib/interactions'
 import { useAuth } from './AuthContext'
 import { canWriteRoom, isPatron, canDo } from '../lib/permissions'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -20,6 +21,7 @@ const emptyState = {
   finance: [],
   feedback: [],
   dailyMetrics: [],
+  interactions: [],
   dmThreads: [],
   notifications: [],
   auditLogs: [],
@@ -602,6 +604,156 @@ export function DataProvider({ children }) {
     setLocal((prev) => ({ ...prev, feedback: prev.feedback.filter((f) => f.id !== id) }))
   }, [setLocal])
 
+  const syncMetricsFromInteractions = useCallback(async (userId, tarih) => {
+    const computed = computeDailyMetricsFromInteractions(dataRef.current.interactions, userId, tarih)
+    const dup = dataRef.current.dailyMetrics.find((m) => m.tarih === tarih && m.user_id === userId)
+    const saved = await api.upsertRecord('hq_daily_metrics', {
+      ...(dup || {}),
+      id: dup?.id || generateId(),
+      user_id: userId,
+      tarih,
+      ...computed,
+      notlar: dup?.notlar || 'İletişim kayıtlarından otomatik',
+    })
+    setLocal((prev) => {
+      const exists = prev.dailyMetrics.find((m) => m.id === saved.id)
+      return {
+        ...prev,
+        dailyMetrics: exists
+          ? prev.dailyMetrics.map((m) => (m.id === saved.id ? saved : m))
+          : [saved, ...prev.dailyMetrics],
+      }
+    })
+    return saved
+  }, [setLocal])
+
+  const upsertInteraction = useCallback(async (interaction) => {
+    const prev = dataRef.current.interactions.find((i) => i.id === interaction.id)
+    const isNew = !prev
+    const row = {
+      ...interaction,
+      user_id: interaction.user_id || currentUser?.id,
+      sorumlu_id: interaction.sorumlu_id || currentUser?.id,
+      firma_id: interaction.firma_id || null,
+      durum: interaction.durum || (interaction.yon === 'gelen' && !interaction.firma_id && isNew ? 'inbox' : 'islemde'),
+      takip_tarihi: interaction.takip_tarihi || null,
+      toplanti_tarihi: interaction.toplanti_tarihi || null,
+    }
+    const saved = await api.upsertRecord('hq_interactions', row)
+    setLocal((prevState) => {
+      const exists = prevState.interactions.find((i) => i.id === saved.id)
+      return {
+        ...prevState,
+        interactions: exists
+          ? prevState.interactions.map((i) => (i.id === saved.id ? saved : i))
+          : [saved, ...prevState.interactions],
+      }
+    })
+
+    const company = saved.firma_id ? dataRef.current.companies.find((c) => c.id === saved.firma_id) : null
+    if (company && saved.sonuc === 'demo_ayarlandi' && saved.toplanti_tarihi) {
+      await api.upsertRecord('hq_companies', {
+        ...company,
+        demo_tarihi: saved.toplanti_tarihi,
+        demo_saati: saved.toplanti_saati || company.demo_saati,
+        pipeline: ['lead', 'temas'].includes(company.pipeline) ? 'demo' : company.pipeline,
+      })
+      setLocal((prevState) => ({
+        ...prevState,
+        companies: prevState.companies.map((c) => (c.id === company.id ? {
+          ...c,
+          demo_tarihi: saved.toplanti_tarihi,
+          demo_saati: saved.toplanti_saati || c.demo_saati,
+          pipeline: ['lead', 'temas'].includes(c.pipeline) ? 'demo' : c.pipeline,
+        } : c)),
+      }))
+    }
+
+    if (saved.takip_tarihi && saved.durum !== 'tamamlandi' && !saved.linked_task_id && (!prev || !prev.takip_tarihi)) {
+      const operasyonRoom = dataRef.current.rooms.find((r) => r.slug === 'operasyon')
+      const task = await addTask({
+        baslik: `Geri ara: ${company?.ad || saved.kisi_adi || saved.konu || 'İletişim'}`,
+        aciklama: saved.takip_notu || saved.ozet || '',
+        sorumlu_id: saved.sorumlu_id || currentUser?.id,
+        oncelik: 'normal',
+        bitis_tarihi: saved.takip_tarihi.split('T')[0],
+        room_id: operasyonRoom?.id || null,
+        kayit_tipi: saved.firma_id ? 'firma' : null,
+        kayit_id: saved.firma_id || null,
+        olusturan_id: currentUser?.id,
+      })
+      const linked = await api.upsertRecord('hq_interactions', { ...saved, linked_task_id: task.id })
+      setLocal((prevState) => ({
+        ...prevState,
+        interactions: prevState.interactions.map((i) => (i.id === linked.id ? linked : i)),
+      }))
+    }
+
+    const logDate = (saved.created_at || new Date().toISOString()).split('T')[0]
+    await syncMetricsFromInteractions(saved.user_id, logDate)
+
+    if (isNew) {
+      logAudit('interaction_log', `${saved.tip}: ${saved.konu || saved.ozet?.slice(0, 40) || 'İletişim'}`, 'interaction', saved.id)
+    }
+    return saved
+  }, [currentUser, setLocal, addTask, syncMetricsFromInteractions, logAudit])
+
+  const deleteInteraction = useCallback(async (id) => {
+    await api.deleteFrom('hq_interactions', id)
+    setLocal((prev) => ({ ...prev, interactions: prev.interactions.filter((i) => i.id !== id) }))
+  }, [setLocal])
+
+  const routeInteractionRequest = useCallback(async (interactionId, target) => {
+    const item = dataRef.current.interactions.find((i) => i.id === interactionId)
+    if (!item) throw new Error('Kayıt bulunamadı')
+    const company = item.firma_id ? dataRef.current.companies.find((c) => c.id === item.firma_id) : null
+    let linked = {}
+
+    if (target === 'bug') {
+      const bug = await upsertBug({
+        id: generateId(),
+        baslik: item.konu || item.ozet?.slice(0, 80) || 'Destek talebi',
+        aciklama: item.ozet || '',
+        kaynak: 'musteri',
+        oncelik: 'normal',
+        durum: 'acik',
+        hub_durum: 'triage',
+        iliskili_firma_id: item.firma_id,
+        bildiren_id: currentUser?.id,
+        sorumlu_id: '',
+      })
+      linked = { linked_bug_id: bug.id, talep_tipi: 'destek', durum: 'tamamlandi', sonuc: 'destek_acildi' }
+    } else if (target === 'feedback') {
+      const fb = await upsertFeedback({
+        id: generateId(),
+        tip: 'sikayet',
+        metin: item.ozet || item.konu || '',
+        firma_id: item.firma_id,
+        kaynak: item.tip === 'whatsapp' ? 'whatsapp' : item.tip === 'email' ? 'email' : 'telefon',
+        durum: 'yeni',
+        sorumlu_id: currentUser?.id,
+      })
+      linked = { linked_feedback_id: fb.id, durum: 'islemde' }
+    } else if (target === 'finance') {
+      const operasyonRoom = dataRef.current.rooms.find((r) => r.slug === 'operasyon')
+      const task = await addTask({
+        baslik: `Fatura/dekont: ${company?.ad || item.kisi_adi || 'Talep'}`,
+        aciklama: item.ozet || item.konu || '',
+        sorumlu_id: currentUser?.id,
+        oncelik: 'normal',
+        room_id: operasyonRoom?.id,
+        kayit_tipi: item.firma_id ? 'firma' : null,
+        kayit_id: item.firma_id || null,
+        olusturan_id: currentUser?.id,
+      })
+      linked = { linked_task_id: task.id, talep_tipi: 'fatura', durum: 'islemde' }
+    } else if (target === 'assign' && item.firma_id) {
+      linked = { durum: 'islemde' }
+    }
+
+    return upsertInteraction({ ...item, ...linked })
+  }, [currentUser, upsertBug, upsertFeedback, addTask, upsertInteraction])
+
   const upsertDailyMetric = useCallback(async (metric) => {
     const item = { ...metric, user_id: metric.user_id || currentUser?.id }
     const dup = dataRef.current.dailyMetrics.find((m) => m.tarih === item.tarih && m.user_id === item.user_id)
@@ -702,6 +854,10 @@ export function DataProvider({ children }) {
         deleteFeedback,
         upsertDailyMetric,
         deleteDailyMetric,
+        upsertInteraction,
+        deleteInteraction,
+        routeInteractionRequest,
+        syncMetricsFromInteractions,
         updateSettings,
         resetAllData,
         loadSample,
