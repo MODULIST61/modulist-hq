@@ -87,15 +87,3 @@ export function generateWeeklyReport(data, users) {
     period: { start: start.toISOString(), end: end.toISOString() },
   }
 }
-
-export async function mockSendWeeklyEmail(reportText, recipient) {
-  await new Promise((r) => setTimeout(r, 1200))
-  const sent = {
-    to: recipient,
-    subject: `Modulist HQ Haftalık Özet — ${new Date().toLocaleDateString('tr-TR')}`,
-    body: reportText,
-    sent_at: new Date().toISOString(),
-    status: 'mock_gonderildi',
-  }
-  return sent
-}

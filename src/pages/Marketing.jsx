@@ -20,6 +20,8 @@ export default function Marketing() {
   const stats = useMemo(() => buildMarketingStats(campaigns, companies), [campaigns, companies])
   const [campModal, setCampModal] = useState(false)
   const [expenseModal, setExpenseModal] = useState(false)
+  const [bulkModal, setBulkModal] = useState(false)
+  const [bulkRows, setBulkRows] = useState([])
   const [form, setForm] = useState({})
   const [expense, setExpense] = useState({ tutar: 0, aciklama: '', kampanya_id: '', kategori: 'reklam' })
 
@@ -58,6 +60,39 @@ export default function Marketing() {
     setExpense({ tutar: 0, aciklama: '', kampanya_id: '', kategori: 'reklam' })
   }
 
+  const openBulk = () => {
+    setBulkRows(campaigns.map((c) => ({
+      id: c.id,
+      ad: c.ad,
+      butce_harcanan: c.butce_harcanan || 0,
+      tiklama: c.tiklama || 0,
+      gosterim: c.gosterim || 0,
+      erisim: c.erisim || 0,
+      kayit_sayisi: c.kayit_sayisi || 0,
+    })))
+    setBulkModal(true)
+  }
+
+  const updateBulkRow = (id, field, value) => {
+    setBulkRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: value } : r)))
+  }
+
+  const saveBulk = async () => {
+    for (const row of bulkRows) {
+      const original = campaigns.find((c) => c.id === row.id)
+      if (!original) continue
+      await upsertCampaign({
+        ...original,
+        butce_harcanan: Number(row.butce_harcanan) || 0,
+        tiklama: Number(row.tiklama) || 0,
+        gosterim: Number(row.gosterim) || 0,
+        erisim: Number(row.erisim) || 0,
+        kayit_sayisi: Number(row.kayit_sayisi) || 0,
+      })
+    }
+    setBulkModal(false)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -69,6 +104,9 @@ export default function Marketing() {
         </div>
         {canEdit && (
           <div className="flex gap-2">
+            {campaigns.length > 0 && (
+              <Button variant="outline" onClick={openBulk}>Haftalık Toplu Giriş</Button>
+            )}
             <Button variant="outline" onClick={() => setExpenseModal(true)}>Gider Talebi</Button>
             <Button onClick={() => openCampaign()}>+ Kampanya</Button>
           </div>
@@ -186,6 +224,48 @@ export default function Marketing() {
           <Textarea label="Açıklama" value={expense.aciklama} onChange={(e) => setExpense({ ...expense, aciklama: e.target.value })} />
           <Button onClick={submitExpense} className="w-full">Onaya Gönder</Button>
         </div>
+      </Modal>
+
+      <Modal open={bulkModal} onClose={() => setBulkModal(false)} title="Haftalık Toplu Giriş" size="xl">
+        <p className="text-sm text-slate-500 mb-4">Meta/Google panelinden kopyaladığın rakamları tüm kampanyalar için tek seferde güncelle.</p>
+        {!bulkRows.length ? (
+          <p className="text-sm text-slate-400 py-6 text-center">Önce kampanya ekleyin</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-slate-500 border-b dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900">
+                  <tr>
+                    <th className="pb-2 pr-2">Kampanya</th>
+                    <th className="pb-2 px-1">Harcanan</th>
+                    <th className="pb-2 px-1">Tıklama</th>
+                    <th className="pb-2 px-1">Gösterim</th>
+                    <th className="pb-2 px-1">Erişim</th>
+                    <th className="pb-2 pl-1">Lead</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y dark:divide-slate-800">
+                  {bulkRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="py-2 pr-2 font-medium max-w-[140px] truncate">{row.ad}</td>
+                      {['butce_harcanan', 'tiklama', 'gosterim', 'erisim', 'kayit_sayisi'].map((field) => (
+                        <td key={field} className="py-2 px-1">
+                          <input
+                            type="number"
+                            className="w-full min-w-[72px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-sm"
+                            value={row[field]}
+                            onChange={(e) => updateBulkRow(row.id, field, e.target.value)}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Button onClick={saveBulk} className="w-full mt-4">Tümünü Kaydet</Button>
+          </>
+        )}
       </Modal>
     </div>
   )

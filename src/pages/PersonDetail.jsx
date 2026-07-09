@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { buildPersonProfile } from '../lib/personAnalytics'
+import { buildPersonProfile, buildPersonWeeklyComparison, buildPersonReportText } from '../lib/personAnalytics'
+import { printPersonReport } from '../lib/print'
 import { PageHeader, Card } from '../components/ui/Page'
 import { JobBadge, StatusBadge, PriorityBadge, PipelineBadge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -28,6 +29,12 @@ export default function PersonDetail() {
   const [tab, setTab] = useState('ozet')
 
   const profile = useMemo(() => buildPersonProfile(id, data, users), [id, data, users])
+  const weekly = useMemo(() => (profile ? buildPersonWeeklyComparison(id, data) : null), [id, data, profile])
+
+  const handlePrint = () => {
+    if (!profile || !weekly) return
+    printPersonReport(buildPersonReportText(profile, weekly), profile.user.name)
+  }
 
   if (!profile) {
     return (
@@ -60,13 +67,38 @@ export default function PersonDetail() {
             </p>
           )}
         </div>
-        {perf && (
-          <Card className="p-4 text-center min-w-[120px]">
-            <div className="text-3xl font-bold text-accent">{perf.score}</div>
-            <div className="text-xs text-slate-500">Performans ({perf.grade})</div>
-          </Card>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          {perf && (
+            <Card className="p-4 text-center min-w-[120px]">
+              <div className="text-3xl font-bold text-accent">{perf.score}</div>
+              <div className="text-xs text-slate-500">Performans ({perf.grade})</div>
+            </Card>
+          )}
+          <Button variant="outline" size="sm" onClick={handlePrint}>Rapor Yazdır</Button>
+        </div>
       </div>
+
+      {weekly && (
+        <Card className="p-4">
+          <h3 className="font-semibold mb-3 text-sm">Bu Hafta vs Geçen Hafta</h3>
+          <div className="grid grid-cols-3 gap-4 text-center text-sm">
+            {[
+              { label: 'Arama', cur: weekly.current.arama, prev: weekly.previous.arama, delta: weekly.deltas.arama },
+              { label: 'Demo', cur: weekly.current.demo, prev: weekly.previous.demo, delta: weekly.deltas.demo },
+              { label: 'Görev', cur: weekly.tasksDone.current, prev: weekly.tasksDone.previous, delta: weekly.deltas.tasks },
+            ].map((row) => (
+              <div key={row.label}>
+                <div className="text-xs text-slate-500 mb-1">{row.label}</div>
+                <div className="text-xl font-bold">{row.cur}</div>
+                <div className="text-xs text-slate-400">geçen: {row.prev}</div>
+                <div className={cn('text-xs font-medium mt-1', row.delta >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                  {row.delta >= 0 ? '+' : ''}{row.delta}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
         {[

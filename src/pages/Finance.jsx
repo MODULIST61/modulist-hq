@@ -7,7 +7,7 @@ import { Input, Select, Textarea } from '../components/ui/Input'
 import { Modal, EmptyState } from '../components/ui/Modal'
 import { SectionCard } from '../components/dashboard/DashboardWidgets'
 import { FINANCE_CATEGORY_LABELS, FINANCE_STATUS } from '../lib/constants'
-import { formatCurrency, formatDate, isThisMonth, generateId, getUserName } from '../lib/utils'
+import { formatCurrency, formatDate, isThisMonth, generateId, getUserName, cn } from '../lib/utils'
 import { BarChart } from '../components/dashboard/DashboardWidgets'
 
 const emptyEntry = () => ({
@@ -30,6 +30,8 @@ export default function Finance() {
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(emptyEntry())
   const [tab, setTab] = useState('all')
+  const [approvalModal, setApprovalModal] = useState(null)
+  const [approvalNote, setApprovalNote] = useState('')
 
   const pending = finance.filter((f) => f.durum === 'bekliyor')
   const thisMonth = useMemo(() => finance.filter((f) => isThisMonth(f.tarih)), [finance])
@@ -57,6 +59,29 @@ export default function Finance() {
   }
 
   const statusColor = { bekliyor: 'bg-amber-100 text-amber-700', onaylandi: 'bg-emerald-100 text-emerald-700', reddedildi: 'bg-red-100 text-red-600' }
+
+  const openApproval = (item, action) => {
+    setApprovalModal({ item, action })
+    setApprovalNote('')
+  }
+
+  const submitApproval = async () => {
+    if (!approvalModal) return
+    const { item, action } = approvalModal
+    if (action === 'approve') await approveFinance(item.id, approvalNote)
+    else await rejectFinance(item.id, approvalNote)
+    setApprovalModal(null)
+    setApprovalNote('')
+  }
+
+  const monthByCategory = useMemo(() => {
+    const map = {}
+    thisMonth.filter((f) => f.durum === 'onaylandi').forEach((f) => {
+      const key = FINANCE_CATEGORY_LABELS[f.kategori] || f.kategori
+      map[key] = (map[key] || 0) + (f.tip === 'gelir' ? f.tutar : -f.tutar)
+    })
+    return Object.entries(map).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+  }, [thisMonth])
 
   return (
     <div className="space-y-6">
@@ -101,8 +126,8 @@ export default function Finance() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => approveFinance(f.id)}>Onayla</Button>
-                  <Button size="sm" variant="danger" onClick={() => rejectFinance(f.id)}>Reddet</Button>
+                  <Button size="sm" onClick={() => openApproval(f, 'approve')}>Onayla</Button>
+                  <Button size="sm" variant="danger" onClick={() => openApproval(f, 'reject')}>Reddet</Button>
                 </div>
               </div>
             ))}
@@ -113,6 +138,21 @@ export default function Finance() {
       {giderByPerson.length > 0 && (
         <SectionCard title="Kim Ne Harcadı (Bu Ay)" subtitle="Onaylı giderler — giren kişi">
           <BarChart data={giderByPerson} format={(v) => formatCurrency(v)} />
+        </SectionCard>
+      )}
+
+      {monthByCategory.length > 0 && (
+        <SectionCard title="Aylık Kategori Özeti" subtitle="Onaylı hareketler — net etki">
+          <div className="space-y-2 text-sm">
+            {monthByCategory.map(([cat, amount]) => (
+              <div key={cat} className="flex justify-between py-2 border-b dark:border-slate-800 last:border-0">
+                <span className="text-slate-500">{cat}</span>
+                <span className={cn('font-semibold', amount >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                  {formatCurrency(Math.abs(amount))} {amount >= 0 ? 'gelir' : 'gider'}
+                </span>
+              </div>
+            ))}
+          </div>
         </SectionCard>
       )}
 
@@ -146,7 +186,10 @@ export default function Finance() {
                   <td className="px-4 py-3">{FINANCE_CATEGORY_LABELS[f.kategori] || f.kategori}</td>
                   <td className="px-4 py-3 font-semibold">{formatCurrency(f.tutar)}</td>
                   <td className="px-4 py-3 text-slate-500">{getUserName(users, f.giren_id)}</td>
-                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${statusColor[f.durum]}`}>{FINANCE_STATUS[f.durum] || f.durum}</span></td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor[f.durum]}`}>{FINANCE_STATUS[f.durum] || f.durum}</span>
+                    {f.onay_notu && <p className="text-xs text-slate-400 mt-1 max-w-[200px] truncate" title={f.onay_notu}>{f.onay_notu}</p>}
+                  </td>
                   <td className="px-4 py-3">
                     <Button variant="ghost" size="sm" onClick={() => { setForm(f); setModal(true) }}>Düzenle</Button>
                     <Button variant="ghost" size="sm" className="text-danger" onClick={() => confirm('Sil?') && deleteFinance(f.id)}>Sil</Button>
@@ -179,6 +222,33 @@ export default function Finance() {
           <Textarea label="Açıklama" value={form.aciklama || ''} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} className="col-span-2" />
         </div>
         <Button onClick={save} className="w-full mt-4">Kaydet</Button>
+      </Modal>
+
+      <Modal
+        open={!!approvalModal}
+        onClose={() => setApprovalModal(null)}
+        title={approvalModal?.action === 'approve' ? 'Gideri Onayla' : 'Gideri Reddet'}
+      >
+        {approvalModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              <strong>{formatCurrency(approvalModal.item.tutar)}</strong> — {approvalModal.item.aciklama || FINANCE_CATEGORY_LABELS[approvalModal.item.kategori]}
+            </p>
+            <Textarea
+              label="Patron notu (isteğe bağlı)"
+              value={approvalNote}
+              onChange={(e) => setApprovalNote(e.target.value)}
+              placeholder={approvalModal.action === 'approve' ? 'Onay notu...' : 'Red gerekçesi...'}
+            />
+            <Button
+              className="w-full"
+              variant={approvalModal.action === 'reject' ? 'danger' : 'default'}
+              onClick={submitApproval}
+            >
+              {approvalModal.action === 'approve' ? 'Onayla' : 'Reddet'}
+            </Button>
+          </div>
+        )}
       </Modal>
     </div>
   )

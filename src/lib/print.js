@@ -21,3 +21,7 @@ ${bodyHtml}
 export function printWeeklyReport(text) {
   printHtml('Haftalık Özet Raporu', `<pre>${text.replace(/</g, '&lt;')}</pre>`)
 }
+
+export function printPersonReport(text, personName) {
+  printHtml(`${personName} — Personel Raporu`, `<pre>${text.replace(/</g, '&lt;')}</pre>`)
+}

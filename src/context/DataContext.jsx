@@ -305,6 +305,7 @@ export function DataProvider({ children }) {
   }, [setLocal])
 
   const upsertCampaign = useCallback(async (campaign) => {
+    const prev = dataRef.current.campaigns.find((c) => c.id === campaign.id)
     const saved = await api.upsertRecord('hq_campaigns', campaign)
     setLocal((prev) => {
       const exists = prev.campaigns.find((c) => c.id === saved.id)
@@ -313,7 +314,13 @@ export function DataProvider({ children }) {
         campaigns: exists ? prev.campaigns.map((c) => (c.id === saved.id ? saved : c)) : [saved, ...prev.campaigns],
       }
     })
-  }, [setLocal])
+    logAudit(
+      prev ? 'campaign_update' : 'campaign_update',
+      prev ? `Kampanya güncellendi: ${saved.ad}` : `Kampanya eklendi: ${saved.ad}`,
+      'campaign',
+      saved.id
+    )
+  }, [setLocal, logAudit])
 
   const deleteCampaign = useCallback(async (id) => {
     await api.deleteFrom('hq_campaigns', id)
@@ -358,33 +365,42 @@ export function DataProvider({ children }) {
         finance: exists ? prev.finance.map((f) => (f.id === saved.id ? saved : f)) : [saved, ...prev.finance],
       }
     })
-  }, [currentUser, setLocal])
+    if (saved.durum === 'bekliyor') {
+      logAudit('finance_create', `Gider talebi: ${saved.aciklama || saved.kategori} (${saved.tutar} TL)`, 'finance', saved.id)
+    }
+  }, [currentUser, setLocal, logAudit])
 
-  const approveFinance = useCallback(async (id) => {
+  const approveFinance = useCallback(async (id, note = '') => {
+    const item = dataRef.current.finance.find((f) => f.id === id)
     const { data, error } = await supabase.from('hq_finance').update({
       durum: 'onaylandi',
       onaylayan_id: currentUser?.id,
       onay_tarihi: new Date().toISOString(),
+      onay_notu: note?.trim() || null,
     }).eq('id', id).select().single()
     if (error) throw error
     setLocal((prev) => ({
       ...prev,
       finance: prev.finance.map((f) => (f.id === id ? data : f)),
     }))
-  }, [currentUser, setLocal])
+    logAudit('finance_approve', `Gider onaylandı: ${item?.aciklama || item?.kategori || id}`, 'finance', id, { note })
+  }, [currentUser, setLocal, logAudit])
 
-  const rejectFinance = useCallback(async (id) => {
+  const rejectFinance = useCallback(async (id, note = '') => {
+    const item = dataRef.current.finance.find((f) => f.id === id)
     const { data, error } = await supabase.from('hq_finance').update({
       durum: 'reddedildi',
       onaylayan_id: currentUser?.id,
       onay_tarihi: new Date().toISOString(),
+      onay_notu: note?.trim() || null,
     }).eq('id', id).select().single()
     if (error) throw error
     setLocal((prev) => ({
       ...prev,
       finance: prev.finance.map((f) => (f.id === id ? data : f)),
     }))
-  }, [currentUser, setLocal])
+    logAudit('finance_reject', `Gider reddedildi: ${item?.aciklama || item?.kategori || id}`, 'finance', id, { note })
+  }, [currentUser, setLocal, logAudit])
 
   const deleteFinance = useCallback(async (id) => {
     await api.deleteFrom('hq_finance', id)
