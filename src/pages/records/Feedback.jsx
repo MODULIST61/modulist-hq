@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useData } from '../../context/DataContext'
 import { Button } from '../../components/ui/Button'
@@ -7,17 +8,24 @@ import { Modal, EmptyState } from '../../components/ui/Modal'
 import { FEEDBACK_TYPES, FEEDBACK_STATUS } from '../../lib/constants'
 import { formatDateTime, generateId, getUserName } from '../../lib/utils'
 
-export default function Feedback() {
+export default function Feedback({ embedded = false }) {
   const { users, currentUser } = useAuth()
-  const { feedback, companies, upsertFeedback, deleteFeedback } = useData()
+  const { feedback, companies, bugs, upsertFeedback, deleteFeedback, convertFeedbackToBug } = useData()
+  const navigate = useNavigate()
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState({})
   const [filter, setFilter] = useState('')
+  const [tipFilter, setTipFilter] = useState('')
+  const [converting, setConverting] = useState(null)
 
-  const filtered = feedback.filter((f) => !filter || f.durum === filter)
+  const filtered = feedback.filter((f) => {
+    if (filter && f.durum !== filter) return false
+    if (tipFilter && f.tip !== tipFilter) return false
+    return true
+  })
 
   const openNew = () => {
-    setForm({ tip: 'soru', metin: '', firma_id: '', kaynak: 'telefon', durum: 'yeni', sorumlu_id: currentUser.id })
+    setForm({ tip: 'sikayet', metin: '', firma_id: '', kaynak: 'telefon', durum: 'yeni', sorumlu_id: currentUser.id })
     setModal(true)
   }
 
@@ -29,15 +37,45 @@ export default function Feedback() {
     setModal(false)
   }
 
+  const handleConvert = async (f) => {
+    if (f.bug_id) {
+      navigate('/yazilim?tab=buglar')
+      return
+    }
+    setConverting(f.id)
+    try {
+      await convertFeedbackToBug(f.id)
+      alert('Bug oluşturuldu — Yazılım triage\'a düştü.')
+    } catch (e) {
+      alert(e.message || 'Dönüştürülemedi.')
+    } finally {
+      setConverting(null)
+    }
+  }
+
   const tipColors = { sikayet: 'bg-red-100 text-red-700', oneri: 'bg-blue-100 text-blue-700', olumlu: 'bg-emerald-100 text-emerald-700', soru: 'bg-amber-100 text-amber-700' }
+
+  const pendingConvert = feedback.filter((f) => ['sikayet', 'soru'].includes(f.tip) && f.durum === 'yeni' && !f.bug_id).length
 
   return (
     <div>
+      {pendingConvert > 0 && (
+        <div className="mb-4 p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200/60 text-sm">
+          <strong>{pendingConvert} geri dönüş</strong> bug&apos;a çevrilmeyi bekliyor (şikayet/soru).
+        </div>
+      )}
+
       <div className="flex justify-between mb-4 flex-wrap gap-3">
-        <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-40">
-          <option value="">Tüm durumlar</option>
-          {Object.entries(FEEDBACK_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </Select>
+        <div className="flex gap-2 flex-wrap">
+          <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-40">
+            <option value="">Tüm durumlar</option>
+            {Object.entries(FEEDBACK_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <Select value={tipFilter} onChange={(e) => setTipFilter(e.target.value)} className="w-36">
+            <option value="">Tüm tipler</option>
+            {Object.entries(FEEDBACK_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+        </div>
         <Button onClick={openNew}>+ Geri Dönüş Ekle</Button>
       </div>
 
@@ -47,6 +85,8 @@ export default function Feedback() {
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y dark:divide-slate-800">
           {filtered.map((f) => {
             const firma = companies.find((c) => c.id === f.firma_id)
+            const linkedBug = f.bug_id ? bugs.find((b) => b.id === f.bug_id) : null
+            const canConvert = ['sikayet', 'soru'].includes(f.tip) && !f.bug_id
             return (
               <div key={f.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30">
                 <div className="flex items-start justify-between gap-4">
@@ -54,12 +94,25 @@ export default function Feedback() {
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipColors[f.tip]}`}>{FEEDBACK_TYPES[f.tip]}</span>
                       <span className="text-xs text-slate-400">{FEEDBACK_STATUS[f.durum]}</span>
-                      {firma && <span className="text-xs text-accent">{firma.ad}</span>}
+                      {firma && (
+                        <Link to={`/sekreter/firmalar/${firma.id}`} className="text-xs text-accent hover:underline">{firma.ad}</Link>
+                      )}
+                      {linkedBug && (
+                        <Link to="/yazilim?tab=buglar" className="text-xs text-purple-600 hover:underline">🐛 {linkedBug.baslik}</Link>
+                      )}
                     </div>
                     <p className="text-sm">{f.metin}</p>
                     <p className="text-xs text-slate-400 mt-1">{formatDateTime(f.created_at)} · {getUserName(users, f.sorumlu_id)} · {f.kaynak}</p>
                   </div>
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                    {canConvert && (
+                      <Button variant="accent" size="sm" disabled={converting === f.id} onClick={() => handleConvert(f)}>
+                        {converting === f.id ? '...' : "Bug'a çevir"}
+                      </Button>
+                    )}
+                    {f.bug_id && (
+                      <Button variant="outline" size="sm" onClick={() => navigate('/yazilim?tab=buglar')}>Bug →</Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => openEdit(f)}>Düzenle</Button>
                     <Button variant="ghost" size="sm" className="text-danger" onClick={() => confirm('Sil?') && deleteFeedback(f.id)}>Sil</Button>
                   </div>

@@ -8,13 +8,15 @@ import { PipelineBadge, StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, Card, EmptyIllustration } from '../../components/ui/Page'
 import { PIPELINE_STAGES, PIPELINE_LABELS } from '../../lib/constants'
 import { formatDate, formatDateTime, formatCurrency, getUserName } from '../../lib/utils'
-import { canAccessFinance } from '../../lib/permissions'
+import { QuickBugModal, QuickFeedbackModal } from '../../components/records/QuickReportModals'
+import { openBugsForCompany } from '../../lib/bugFlow'
 
 const TIMELINE_ICONS = {
   mesaj: '💬',
   not: '📝',
   gorev: '✅',
   geri_donus: '📣',
+  bug: '🐛',
   finans: '💰',
   pipeline: '🔄',
 }
@@ -22,10 +24,12 @@ const TIMELINE_ICONS = {
 export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
   const { id } = useParams()
   const { users, currentUser } = useAuth()
-  const { companies, messages, tasks, feedback, finance, upsertCompany } = useData()
+  const { companies, messages, tasks, feedback, finance, bugs, upsertCompany, upsertBug, upsertFeedback } = useData()
   const navigate = useNavigate()
   const [note, setNote] = useState('')
   const [tab, setTab] = useState('timeline')
+  const [bugModal, setBugModal] = useState(false)
+  const [feedbackModal, setFeedbackModal] = useState(false)
 
   const company = companies.find((c) => c.id === id)
   const patron = canAccessFinance(currentUser)
@@ -42,6 +46,11 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
     () => feedback.filter((f) => f.firma_id === id),
     [feedback, id]
   )
+  const relatedBugs = useMemo(
+    () => bugs.filter((b) => b.iliskili_firma_id === id),
+    [bugs, id]
+  )
+  const openCompanyBugs = useMemo(() => openBugsForCompany(bugs, id), [bugs, id])
   const relatedFinance = useMemo(
     () => finance.filter((f) => f.firma_id === id),
     [finance, id]
@@ -70,6 +79,13 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
         id: f.id,
         user: getUserName(users, f.user_id),
       })),
+      ...relatedBugs.map((b) => ({
+        type: 'bug',
+        date: b.created_at,
+        text: `${b.baslik} — ${b.durum}${b.oncelik === 'kritik' ? ' ⚠️' : ''}`,
+        id: b.id,
+        user: getUserName(users, b.bildiren_id),
+      })),
       ...(patron ? relatedFinance.map((f) => ({
         type: 'finans',
         date: f.tarih,
@@ -85,7 +101,7 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
       items.push({ type: 'pipeline', date: company.created_at, text: `Firma oluşturuldu — ${PIPELINE_LABELS[company.pipeline]}`, id: 'created', user: 'Sistem' })
     }
     return items.sort((a, b) => new Date(b.date) - new Date(a.date))
-  }, [relatedMessages, relatedTasks, relatedFeedback, relatedFinance, company, users, patron])
+  }, [relatedMessages, relatedTasks, relatedFeedback, relatedBugs, relatedFinance, company, users, patron])
 
   if (!company) {
     return (
@@ -113,6 +129,7 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
   const tabs = [
     { id: 'timeline', label: 'Zaman Çizelgesi', count: timeline.length },
     { id: 'tasks', label: 'Görevler', count: relatedTasks.length },
+    { id: 'bugs', label: "Bug'lar", count: relatedBugs.length },
     { id: 'feedback', label: 'Geri Dönüş', count: relatedFeedback.length },
   ]
 
@@ -125,6 +142,8 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
         action={
           <>
             <PipelineBadge stage={company.pipeline} />
+            <Button variant="outline" onClick={() => setBugModal(true)}>🐛 Bug raporla</Button>
+            <Button variant="outline" onClick={() => setFeedbackModal(true)}>📣 Geri dönüş</Button>
             <Button variant="outline" onClick={() => navigate('/mesajlar?oda=satis')}>Mesaj gönder</Button>
           </>
         }
@@ -161,6 +180,7 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between"><span className="text-slate-500">Mesaj</span><span className="font-medium">{relatedMessages.length}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Görev</span><span className="font-medium">{relatedTasks.length}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Açık bug</span><span className={`font-medium ${openCompanyBugs.length ? 'text-red-600' : ''}`}>{openCompanyBugs.length}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Geri dönüş</span><span className="font-medium">{relatedFeedback.length}</span></div>
             {patron && <div className="flex justify-between"><span className="text-slate-500">Finans kaydı</span><span className="font-medium">{relatedFinance.length}</span></div>}
           </div>
@@ -233,6 +253,30 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
           </Card>
         )}
 
+        {tab === 'bugs' && (
+          <Card className="p-5">
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-sm text-slate-500">{openCompanyBugs.length} açık bug</p>
+              <Button size="sm" onClick={() => setBugModal(true)}>+ Bug raporla</Button>
+            </div>
+            {relatedBugs.length === 0 ? (
+              <EmptyIllustration emoji="🐛" title="Bug yok" description="Bu firmadan raporlanmış bug bulunmuyor." action={<Button variant="outline" onClick={() => setBugModal(true)}>Bug raporla</Button>} />
+            ) : (
+              <div className="divide-y dark:divide-slate-800">
+                {relatedBugs.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between py-3 text-sm">
+                    <div>
+                      <span className="font-medium">{b.baslik}</span>
+                      <div className="text-xs text-slate-400 mt-0.5">{b.durum} · {b.oncelik} · {getUserName(users, b.sorumlu_id)}</div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => navigate('/yazilim?tab=buglar')}>Yazılım →</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+
         {tab === 'feedback' && (
           <Card className="p-5">
             {relatedFeedback.length === 0 ? (
@@ -256,6 +300,21 @@ export default function CompanyDetail({ backPath = '/sekreter?tab=firmalar' }) {
       </div>
 
       <button type="button" onClick={() => navigate(backPath)} className="mt-6 text-sm text-slate-500 hover:text-accent transition-colors">← Firmalar listesine dön</button>
+
+      <QuickBugModal
+        open={bugModal}
+        onClose={() => setBugModal(false)}
+        companyId={id}
+        companyName={company.ad}
+        onSave={upsertBug}
+      />
+      <QuickFeedbackModal
+        open={feedbackModal}
+        onClose={() => setFeedbackModal(false)}
+        companyId={id}
+        companyName={company.ad}
+        onSave={upsertFeedback}
+      />
     </div>
   )
 }

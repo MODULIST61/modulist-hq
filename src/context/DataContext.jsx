@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import * as api from '../lib/api'
 import { generateId, parseMentionIds } from '../lib/utils'
+import { devUsers, pickDevAssignee, feedbackToBugDraft, bugPriorityToTask } from '../lib/bugFlow'
 import { useAuth } from './AuthContext'
 import { canWriteRoom, isPatron, canDo } from '../lib/permissions'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -315,17 +316,122 @@ export function DataProvider({ children }) {
   }, [setLocal])
 
   const upsertBug = useCallback(async (bug) => {
-    const row = { ...bug, bildiren_id: bug.bildiren_id || currentUser?.id }
-    if (row.durum === 'kapali' && !row.kapanis_tarihi) row.kapanis_tarihi = new Date().toISOString().split('T')[0]
+    const prev = dataRef.current.bugs.find((b) => b.id === bug.id)
+    const isNew = !prev
+    const row = {
+      ...bug,
+      bildiren_id: bug.bildiren_id || currentUser?.id,
+      hub_durum: bug.hub_durum || (isNew ? 'triage' : prev?.hub_durum || 'triage'),
+    }
+    if (row.sorumlu_id && row.hub_durum === 'triage' && row.durum !== 'kapali') {
+      row.hub_durum = 'sprint'
+    }
+    if (row.durum === 'kapali' && !row.kapanis_tarihi) {
+      row.kapanis_tarihi = new Date().toISOString().split('T')[0]
+    }
     const saved = await api.upsertRecord('hq_bugs', row)
-    setLocal((prev) => {
-      const exists = prev.bugs.find((b) => b.id === saved.id)
+    setLocal((prevState) => {
+      const exists = prevState.bugs.find((b) => b.id === saved.id)
       return {
-        ...prev,
-        bugs: exists ? prev.bugs.map((b) => (b.id === saved.id ? saved : b)) : [saved, ...prev.bugs],
+        ...prevState,
+        bugs: exists ? prevState.bugs.map((b) => (b.id === saved.id ? saved : b)) : [saved, ...prevState.bugs],
       }
     })
-  }, [currentUser, setLocal])
+
+    const users = await api.fetchUsers().catch(() => [])
+    const urunRoom = dataRef.current.rooms.find((r) => r.slug === 'urun')
+    const operasyonRoom = dataRef.current.rooms.find((r) => r.slug === 'operasyon')
+    const company = saved.iliskili_firma_id
+      ? dataRef.current.companies.find((c) => c.id === saved.iliskili_firma_id)
+      : null
+
+    if (isNew) {
+      logAudit('bug_create', `Bug raporlandı: ${saved.baslik}`, 'bug', saved.id)
+      const hasTask = dataRef.current.tasks.some((t) => t.kayit_tipi === 'bug' && t.kayit_id === saved.id)
+      if (!hasTask) {
+        await addTask({
+          baslik: `Bug: ${saved.baslik}`,
+          aciklama: saved.aciklama || '',
+          sorumlu_id: saved.sorumlu_id || pickDevAssignee(users, null) || currentUser?.id,
+          oncelik: bugPriorityToTask(saved.oncelik),
+          room_id: urunRoom?.id || null,
+          kayit_tipi: 'bug',
+          kayit_id: saved.id,
+          olusturan_id: currentUser?.id,
+        })
+      }
+      if (urunRoom) {
+        const firmaLabel = company?.ad ? ` (${company.ad})` : ''
+        await addMessage({
+          room_id: urunRoom.id,
+          user_id: currentUser?.id,
+          text: `🐛 Yeni bug: ${saved.baslik}${firmaLabel} · ${saved.oncelik}`,
+          type: saved.oncelik === 'kritik' ? 'duyuru' : 'gorev',
+          linked_record_type: 'bug',
+          linked_record_id: saved.id,
+        }, users)
+      }
+      const notifyIds = new Set(devUsers(users).map((u) => u.id))
+      if (saved.sorumlu_id) notifyIds.add(saved.sorumlu_id)
+      if (['kritik', 'yuksek'].includes(saved.oncelik)) {
+        users.filter((u) => u.role === 'patron').forEach((p) => notifyIds.add(p.id))
+      }
+      notifyIds.delete(currentUser?.id)
+      for (const uid of notifyIds) {
+        await addNotification({ tip: 'bug_yeni', user_id: uid, ref: { bug_id: saved.id } })
+      }
+    } else if (prev?.durum !== saved.durum) {
+      logAudit('bug_update', `Bug durumu: ${saved.baslik} → ${saved.durum}`, 'bug', saved.id)
+      if (urunRoom) {
+        await addMessage({
+          room_id: urunRoom.id,
+          user_id: currentUser?.id,
+          text: `🐛 Bug güncellendi: ${saved.baslik} → ${saved.durum}`,
+          type: 'normal',
+          linked_record_type: 'bug',
+          linked_record_id: saved.id,
+        }, users)
+      }
+    }
+
+    if (saved.durum === 'kapali' && prev?.durum !== 'kapali') {
+      if (saved.feedback_id) {
+        const fb = dataRef.current.feedback.find((f) => f.id === saved.feedback_id)
+        if (fb && fb.durum !== 'cozuldu') {
+          const fbSaved = await api.upsertRecord('hq_feedback', { ...fb, durum: 'cozuldu', bug_id: saved.id })
+          setLocal((prevState) => ({
+            ...prevState,
+            feedback: prevState.feedback.map((f) => (f.id === fbSaved.id ? fbSaved : f)),
+          }))
+        }
+      }
+      const sekreterId = company?.sorumlu_id || saved.bildiren_id
+      if (!saved.musteri_bildirildi && sekreterId && saved.iliskili_firma_id) {
+        await addNotification({
+          tip: 'bug_musteri_bildir',
+          user_id: sekreterId,
+          ref: { bug_id: saved.id, firma_id: saved.iliskili_firma_id },
+        })
+        const hasNotifyTask = dataRef.current.tasks.some(
+          (t) => t.kayit_tipi === 'bug' && t.kayit_id === saved.id && t.baslik?.includes('Müşteriye bildir'),
+        )
+        if (!hasNotifyTask) {
+          await addTask({
+            baslik: `Müşteriye bildir: ${saved.baslik}`,
+            aciklama: saved.cozum_notu || 'Bug kapandı — müşteriye geri dönüş yapın.',
+            sorumlu_id: sekreterId,
+            oncelik: 'normal',
+            room_id: operasyonRoom?.id || null,
+            kayit_tipi: 'bug',
+            kayit_id: saved.id,
+            olusturan_id: currentUser?.id,
+          })
+        }
+      }
+    }
+
+    return saved
+  }, [currentUser, setLocal, addTask, addMessage, addNotification, logAudit])
 
   const deleteBug = useCallback(async (id) => {
     await api.deleteFrom('hq_bugs', id)
@@ -436,15 +542,47 @@ export function DataProvider({ children }) {
   }, [setLocal])
 
   const upsertFeedback = useCallback(async (fb) => {
+    const prev = dataRef.current.feedback.find((f) => f.id === fb.id)
+    const isNew = !prev
     const saved = await api.upsertRecord('hq_feedback', { ...fb, user_id: fb.user_id || currentUser?.id })
-    setLocal((prev) => {
-      const exists = prev.feedback.find((f) => f.id === saved.id)
+    setLocal((prevState) => {
+      const exists = prevState.feedback.find((f) => f.id === saved.id)
       return {
-        ...prev,
-        feedback: exists ? prev.feedback.map((f) => (f.id === saved.id ? saved : f)) : [saved, ...prev.feedback],
+        ...prevState,
+        feedback: exists ? prevState.feedback.map((f) => (f.id === saved.id ? saved : f)) : [saved, ...prevState.feedback],
       }
     })
-  }, [currentUser, setLocal])
+
+    if (isNew) {
+      logAudit('feedback_create', `Geri dönüş: ${saved.tip}`, 'feedback', saved.id)
+      if (['sikayet', 'soru'].includes(saved.tip)) {
+        const users = await api.fetchUsers().catch(() => [])
+        for (const dev of devUsers(users)) {
+          if (dev.id === currentUser?.id) continue
+          await addNotification({ tip: 'feedback_yeni', user_id: dev.id, ref: { feedback_id: saved.id } })
+        }
+      }
+    }
+    return saved
+  }, [currentUser, setLocal, logAudit, addNotification])
+
+  const convertFeedbackToBug = useCallback(async (feedbackId) => {
+    const fb = dataRef.current.feedback.find((f) => f.id === feedbackId)
+    if (!fb) throw new Error('Geri dönüş bulunamadı')
+    if (fb.bug_id) {
+      const existing = dataRef.current.bugs.find((b) => b.id === fb.bug_id)
+      if (existing) return existing
+    }
+    const draft = feedbackToBugDraft(fb, '')
+    const bug = await upsertBug({
+      ...draft,
+      id: generateId(),
+      bildiren_id: fb.user_id || currentUser?.id,
+    })
+    await upsertFeedback({ ...fb, durum: 'inceleniyor', bug_id: bug.id })
+    logAudit('feedback_to_bug', `Geri dönüş bug'a çevrildi: ${bug.baslik}`, 'feedback', fb.id, { bug_id: bug.id })
+    return bug
+  }, [currentUser, upsertBug, upsertFeedback, logAudit])
 
   const deleteFeedback = useCallback(async (id) => {
     await api.deleteFrom('hq_feedback', id)
@@ -547,6 +685,7 @@ export function DataProvider({ children }) {
         rejectFinance,
         deleteFinance,
         upsertFeedback,
+        convertFeedbackToBug,
         deleteFeedback,
         upsertDailyMetric,
         deleteDailyMetric,
