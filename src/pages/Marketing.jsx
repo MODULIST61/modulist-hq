@@ -4,30 +4,35 @@ import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { canEditMarketing } from '../lib/permissions'
 import { buildMarketingStats } from '../lib/analytics'
-import { resolveModel } from '../lib/aiModels'
-import { StatCard, BarChart, SectionCard } from '../components/dashboard/DashboardWidgets'
+import { BarChart, SectionCard } from '../components/dashboard/DashboardWidgets'
 import { Button } from '../components/ui/Button'
 import { Input, Select, Textarea } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { ContentStudio } from '../components/marketing/ContentStudio'
 import { IdeaLab } from '../components/marketing/IdeaLab'
 import { ImpactAnalysis } from '../components/marketing/ImpactAnalysis'
+import { PromptStudio } from '../components/marketing/PromptStudio'
+import { InspirationGallery } from '../components/marketing/InspirationGallery'
+import { MarketingToday } from '../components/marketing/MarketingToday'
+import { MarketingExpenses, MarketingExpenseModal } from '../components/marketing/MarketingExpenses'
 import Tasks from './Tasks'
 import { formatCurrency, generateId, cn } from '../lib/utils'
-import { FINANCE_CATEGORY_LABELS } from '../lib/constants'
 
 const TABS = [
   { id: 'ozet', label: 'Özet', icon: '📊' },
+  { id: 'ilham', label: 'İlham', icon: '💡' },
+  { id: 'prompt', label: 'Prompt Stüdyosu', icon: '✨' },
   { id: 'studio', label: 'İçerik Stüdyosu', icon: '🎬' },
-  { id: 'fikir', label: 'Fikir Lab', icon: '💡' },
+  { id: 'fikir', label: 'Fikir Lab', icon: '🧪' },
   { id: 'etki', label: 'Etki Analizi', icon: '📈' },
   { id: 'kampanya', label: 'Kampanyalar', icon: '💰' },
+  { id: 'gider', label: 'Giderler', icon: '💸' },
   { id: 'isler', label: 'İşler', icon: '✅' },
 ]
 
 export default function Marketing() {
   const { currentUser } = useAuth()
-  const { campaigns, companies, contents, upsertCampaign, upsertFinance, settings } = useData()
+  const { campaigns, companies, contents, upsertCampaign } = useData()
   const canEdit = canEditMarketing(currentUser)
   const readOnly = !canEdit
   const [searchParams, setSearchParams] = useSearchParams()
@@ -42,7 +47,6 @@ export default function Marketing() {
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkRows, setBulkRows] = useState([])
   const [form, setForm] = useState({})
-  const [expense, setExpense] = useState({ tutar: 0, aciklama: '', kampanya_id: '', kategori: 'reklam' })
 
   const openCampaign = (c = null) => {
     setForm(c || {
@@ -56,19 +60,6 @@ export default function Marketing() {
     if (!form.ad?.trim()) return
     upsertCampaign({ ...form, id: form.id || generateId() })
     setCampModal(false)
-  }
-
-  const submitExpense = () => {
-    if (!expense.tutar) return
-    const camp = campaigns.find((c) => c.id === expense.kampanya_id)
-    upsertFinance({
-      id: generateId(), tip: 'gider', kategori: expense.kategori, tutar: expense.tutar,
-      aciklama: expense.aciklama || `Reklam gideri: ${camp?.ad || ''}`,
-      kampanya_id: expense.kampanya_id || null, tarih: new Date().toISOString().split('T')[0],
-      durum: 'bekliyor', giren_id: currentUser.id,
-    })
-    setExpenseModal(false)
-    setExpense({ tutar: 0, aciklama: '', kampanya_id: '', kategori: 'reklam' })
   }
 
   const openBulk = () => {
@@ -95,22 +86,30 @@ export default function Marketing() {
     setBulkModal(false)
   }
 
+  const linkedContents = (campId) => contents.filter((c) => c.kampanya_id === campId)
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary dark:text-white">Reklam & Büyüme</h1>
           <p className="text-sm text-slate-500">
-            Kampanya · İçerik Stüdyosu · AI Fikir Lab · Etki analizi
+            Creative Studio · İlham · AI Prompt · Kampanya · Gider
           </p>
         </div>
-        {canEdit && tab === 'kampanya' && (
-          <div className="flex gap-2 flex-wrap">
-            {campaigns.length > 0 && <Button variant="outline" onClick={openBulk}>Toplu Giriş</Button>}
-            <Button variant="outline" onClick={() => setExpenseModal(true)}>Gider Talebi</Button>
-            <Button onClick={() => openCampaign()}>+ Kampanya</Button>
-          </div>
-        )}
+        <div className="flex gap-2 flex-wrap">
+          {canEdit && (
+            <>
+              <Button variant="outline" onClick={() => setExpenseModal(true)}>💸 Gider</Button>
+              {tab === 'kampanya' && (
+                <>
+                  {campaigns.length > 0 && <Button variant="outline" onClick={openBulk}>Toplu Giriş</Button>}
+                  <Button onClick={() => openCampaign()}>+ Kampanya</Button>
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700 pb-px">
@@ -120,51 +119,44 @@ export default function Marketing() {
             type="button"
             onClick={() => setTab(t.id)}
             className={cn(
-              'px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-1.5',
-              tab === t.id ? 'border-accent text-accent' : 'border-transparent text-slate-500 hover:text-slate-700'
+              'px-3 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-1.5',
+              tab === t.id ? 'border-accent text-accent' : 'border-transparent text-slate-500 hover:text-slate-700',
             )}
           >
             <span>{t.icon}</span>{t.label}
-            {t.id === 'studio' && contents.length > 0 && (
-              <span className="text-xs bg-slate-100 dark:bg-slate-800 px-1.5 rounded-full">{contents.length}</span>
-            )}
           </button>
         ))}
       </div>
 
       {tab === 'ozet' && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            <StatCard label="Harcama" value={formatCurrency(stats.harcanan)} sub={`Plan: ${formatCurrency(stats.plan)}`} variant={stats.budgetPct >= 80 ? 'warning' : 'accent'} />
-            <StatCard label="Bütçe %" value={`%${stats.budgetPct}`} variant={stats.budgetPct >= 90 ? 'danger' : 'default'} />
-            <StatCard label="Tıklama" value={stats.tiklama.toLocaleString('tr-TR')} />
-            <StatCard label="Lead" value={stats.kayit} />
-            <StatCard label="CPA" value={formatCurrency(stats.cpa)} variant="success" />
-            <StatCard label="İçerik" value={contents.length} sub={`${contents.filter((c) => c.durum === 'yayinda').length} yayında`} />
-          </div>
+          <MarketingToday canEdit={canEdit} onExpense={() => setExpenseModal(true)} onTab={setTab} />
           <div className="grid md:grid-cols-2 gap-6">
             <SectionCard title="Kanal Kırılımı">
               {channelData.length ? <BarChart data={channelData} format={(v) => formatCurrency(v)} /> : <p className="text-sm text-slate-400">Kampanya ekleyin</p>}
             </SectionCard>
             <SectionCard title="Hızlı Erişim">
               <div className="grid grid-cols-2 gap-2">
-                {TABS.filter((t) => t.id !== 'ozet').map((t) => (
-                  <Button key={t.id} variant="outline" size="sm" onClick={() => setTab(t.id)}>{t.icon} {t.label}</Button>
-                ))}
+                {['ilham', 'prompt', 'studio', 'gider', 'kampanya', 'etki'].map((id) => {
+                  const t = TABS.find((x) => x.id === id)
+                  return t ? <Button key={id} variant="outline" size="sm" onClick={() => setTab(id)}>{t.icon} {t.label}</Button> : null
+                })}
               </div>
-              <p className="text-xs text-slate-400 mt-3">AI model: {resolveModel(settings, 'marketing')}</p>
             </SectionCard>
           </div>
         </>
       )}
 
+      {tab === 'ilham' && <InspirationGallery canEdit={canEdit} />}
+      {tab === 'prompt' && <PromptStudio canEdit={canEdit} />}
       {tab === 'studio' && <ContentStudio canEdit={canEdit} />}
       {tab === 'fikir' && <IdeaLab canEdit={canEdit} />}
       {tab === 'etki' && <ImpactAnalysis />}
+      {tab === 'gider' && <MarketingExpenses />}
       {tab === 'isler' && <Tasks hub="reklam" title="Reklam İşleri" subtitle="Büyüme ve kampanya görevleri" />}
 
       {tab === 'kampanya' && (
-        <SectionCard title="Kampanyalar" subtitle={readOnly ? 'Salt okuma' : 'Meta/Google — elle giriş'}>
+        <SectionCard title="Kampanyalar" subtitle={readOnly ? 'Salt okuma' : 'Meta/Google — içerik ve gider bağlantılı'}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-slate-500 border-b dark:border-slate-800">
@@ -173,23 +165,35 @@ export default function Marketing() {
                   <th className="pb-2">Kanal</th>
                   <th className="pb-2">Harcanan / Plan</th>
                   <th className="pb-2">Tıklama</th>
-                  <th className="pb-2">Gösterim</th>
                   <th className="pb-2">Lead</th>
+                  <th className="pb-2">İçerik</th>
                   {canEdit && <th className="pb-2" />}
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-slate-800">
-                {campaigns.map((c) => (
-                  <tr key={c.id}>
-                    <td className="py-3 font-medium">{c.ad}</td>
-                    <td className="py-3"><span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{c.kanal}</span></td>
-                    <td className="py-3">{formatCurrency(c.butce_harcanan)} / {formatCurrency(c.butce_plan)}</td>
-                    <td className="py-3">{c.tiklama || 0}</td>
-                    <td className="py-3">{(c.gosterim || 0).toLocaleString('tr-TR')}</td>
-                    <td className="py-3">{c.kayit_sayisi || 0}</td>
-                    {canEdit && <td className="py-3"><Button variant="ghost" size="sm" onClick={() => openCampaign(c)}>Düzenle</Button></td>}
-                  </tr>
-                ))}
+                {campaigns.map((c) => {
+                  const linked = linkedContents(c.id)
+                  const pct = c.butce_plan ? Math.round((c.butce_harcanan / c.butce_plan) * 100) : 0
+                  return (
+                    <tr key={c.id}>
+                      <td className="py-3 font-medium">{c.ad}</td>
+                      <td className="py-3"><span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{c.kanal}</span></td>
+                      <td className="py-3">
+                        {formatCurrency(c.butce_harcanan)} / {formatCurrency(c.butce_plan)}
+                        {pct >= 90 && <span className="text-[10px] text-red-500 ml-1">%{pct}</span>}
+                      </td>
+                      <td className="py-3">{c.tiklama || 0}</td>
+                      <td className="py-3">{c.kayit_sayisi || 0}</td>
+                      <td className="py-3">
+                        <span className="text-xs text-slate-500">{linked.length} içerik</span>
+                        {linked.filter((x) => x.durum === 'yayinda').length > 0 && (
+                          <span className="text-[10px] text-emerald-600 ml-1">{linked.filter((x) => x.durum === 'yayinda').length} yayında</span>
+                        )}
+                      </td>
+                      {canEdit && <td className="py-3"><Button variant="ghost" size="sm" onClick={() => openCampaign(c)}>Düzenle</Button></td>}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {!campaigns.length && <p className="text-sm text-slate-400 py-6 text-center">Henüz kampanya yok</p>}
@@ -216,17 +220,7 @@ export default function Marketing() {
         <Button onClick={saveCampaign} className="w-full mt-4">Kaydet</Button>
       </Modal>
 
-      <Modal open={expenseModal} onClose={() => setExpenseModal(false)} title="Gider Talebi">
-        <div className="space-y-4">
-          <Select label="Kampanya" value={expense.kampanya_id} onChange={(e) => setExpense({ ...expense, kampanya_id: e.target.value })}>
-            <option value="">—</option>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.ad}</option>)}
-          </Select>
-          <Input label="Tutar" type="number" value={expense.tutar} onChange={(e) => setExpense({ ...expense, tutar: Number(e.target.value) })} />
-          <Textarea label="Açıklama" value={expense.aciklama} onChange={(e) => setExpense({ ...expense, aciklama: e.target.value })} />
-          <Button onClick={submitExpense} className="w-full">Onaya Gönder</Button>
-        </div>
-      </Modal>
+      <MarketingExpenseModal open={expenseModal} onClose={() => setExpenseModal(false)} />
 
       <Modal open={bulkModal} onClose={() => setBulkModal(false)} title="Haftalık Toplu Giriş" size="xl">
         <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">

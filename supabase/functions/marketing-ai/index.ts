@@ -73,6 +73,44 @@ Markdown tablo veya liste. Türkçe.`,
   analyze_impact: `Sen pazarlama analistisin. Verilen içerik performans verisini analiz et.
 Hangi format/platform daha iyi lead getirdi? Ne artırılmalı, ne bırakılmalı?
 Somut öneriler ver. Türkçe markdown.`,
+
+  generate_full_prompt: `Sen Modulist (B2B emlak SaaS) için profesyonel creative director'sın.
+Görev: Tek bir içerik fikri için ÜRETİME HAZIR tam paket oluştur.
+
+ZORUNLU markdown bölümleri (tam bu başlıklarla):
+## Özet
+## Hook (3 saniye)
+## Tam senaryo
+Sahne sahne, süre belirt (0-3sn, 3-10sn vb.)
+## Görsel prompt
+İngilizce, Midjourney/DALL-E için detaylı: subject, lighting, camera, aspect ratio 9:16
+## Video prompt
+İngilizce, Runway/Pika/Kling için: camera movement, scene, duration, style
+## Caption
+Türkçe Instagram/TikTok caption + CTA + 8-12 hashtag
+## Reklam metni
+Meta Ads: 3 primary text varyasyonu + 3 headline (Türkçe, max karakter sınırına dikkat)
+## Checklist
+Çekim öncesi 5 maddelik kontrol listesi
+
+Modulist sesi: profesyonel, empatik, jargon yok, emlak ofisi yöneticisine hitap.`,
+
+  generate_ad_copy: `Sen Meta/Google Ads copywriter'ısın. Modulist emlak SaaS için reklam metinleri yaz.
+Türkçe. Her varyasyon farklı açı: pain point, sosyal kanıt, özellik, aciliyet.
+Markdown formatında:
+## Primary Text (5 varyasyon)
+## Headline (5 varyasyon)
+## Description (3 varyasyon)
+## CTA önerisi`,
+
+  script_30s: `Sen Reels script yazarısın. Modulist emlak SaaS için tam 30 saniyelik word-by-word senaryo yaz.
+Türkçe konuşma dili. Her 3 saniyede bir [SAHNE] ve [METİN] satırı.
+Son 5 saniyede güçlü CTA (demo/trial).
+Markdown.`,
+
+  remix_winner: `Sen içerik stratejistisin. Verilen kazanan içeriği yeni formata uyarla.
+Orijinal hook ve mesajı koru ama yeni format/platform için yeniden yaz.
+Markdown: yeni hook, senaryo, caption taslağı.`,
 }
 
 Deno.serve(async (req) => {
@@ -162,6 +200,39 @@ Mevcut içerik pipeline: ${JSON.stringify(params.pipeline || [], null, 2)}
 Aktif kampanyalar: ${JSON.stringify(params.campaigns || [], null, 2)}`
     case 'analyze_impact':
       return `Performans verisi:\n${JSON.stringify(params.impact || {}, null, 2)}`
+    case 'generate_full_prompt':
+      return `Format: ${params.format || 'reels'}
+Platform: ${params.platform || 'instagram'}
+Ton: ${params.ton || 'egitici'}
+Hedef: ${params.hedef || 'demo lead'}
+Sektör: ${params.sektor || 'emlak ofisleri'}
+Konu/Başlık: ${params.konu || params.baslik || '—'}
+Hook fikri: ${params.hook || '—'}
+Ek not / referans: ${params.not || '—'}
+Mevcut içerikler (tekrar etme): ${JSON.stringify(params.existing || [], null, 2)}`
+    case 'generate_ad_copy':
+      return `Kampanya: ${params.kampanya || 'Modulist genel'}
+Hedef kitle: ${params.hedef || 'emlak ofisi sahipleri'}
+Format: ${params.format || 'Meta Feed + Reels'}
+Öne çıkan mesaj: ${params.mesaj || params.hook || '—'}
+Bütçe bağlamı: ${params.butce || '—'}`
+    case 'script_30s':
+      return `Konu: ${params.konu || params.baslik || 'Modulist tanıtım'}
+Hook: ${params.hook || '—'}
+Ton: ${params.ton || 'egitici'}
+Platform: ${params.platform || 'instagram'}
+CTA: ${params.hedef || 'demo'}`
+    case 'remix_winner':
+      return `Kazanan içerik:
+Başlık: ${params.baslik}
+Hook: ${params.hook}
+Format: ${params.tip || params.format}
+Platform: ${params.platform}
+Lead: ${params.leads || 0}
+Görüntülenme: ${params.goruntulenme || 0}
+
+Yeni format: ${params.yeni_format || 'carousel'}
+Yeni platform: ${params.yeni_platform || 'instagram'}`
     default:
       return JSON.stringify(params)
   }

@@ -517,6 +517,19 @@ export function DataProvider({ children }) {
       ...prev,
       finance: prev.finance.map((f) => (f.id === id ? data : f)),
     }))
+    if (item?.kampanya_id && item.tip === 'gider' && item.tutar) {
+      const camp = dataRef.current.campaigns.find((c) => c.id === item.kampanya_id)
+      if (camp) {
+        const updated = await api.upsertRecord('hq_campaigns', {
+          ...camp,
+          butce_harcanan: (Number(camp.butce_harcanan) || 0) + Number(item.tutar),
+        })
+        setLocal((prev) => ({
+          ...prev,
+          campaigns: prev.campaigns.map((c) => (c.id === updated.id ? updated : c)),
+        }))
+      }
+    }
     logAudit('finance_approve', `Gider onaylandı: ${item?.aciklama || item?.kategori || id}`, 'finance', id, { note })
   }, [currentUser, setLocal, logAudit])
 
